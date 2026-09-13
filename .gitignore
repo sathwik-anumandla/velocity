@@ -1,0 +1,96 @@
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Custom Private System Prompts (keeps your personal prompt private on GitHub)
+config/system_prompt.json
+config/system_prompt.md
+system_prompt.json
+system_prompt.md
+!config/system_prompt.example.json
+
+# Python
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Databases & Runtime State
+data/*.db
+data/*.db-shm
+data/*.db-wal
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+# Flutter & Dart
+.dart_tool/
+.pub-cache/
+.pub/
+.flutter-plugins
+.flutter-plugins-dependencies
+app/.dart_tool/
+app/.pub-cache/
+app/.pub/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/build/
+build/
+coverage/
+
+# Compiled Binaries & Applications
+*.app/
+*.ipa
+*.apk
+*.aab
+*.dmg
+*.pkg
+*.exe
+*.deb
+*.rpm
+*.dSYM/
+*.dSYM.zip
+
+# Android & Gradle Build Artifacts
+.gradle/
+**/android/.gradle/
+**/android/local.properties
+**/android/app/build/
+**/android/.kotlin/
+**/android/key.properties
+**/*.keystore
+**/*.jks
+
+# macOS System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# IDEs & Editors
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Logs & Temporary Files
+*.log
+*.tmp
+*.bak

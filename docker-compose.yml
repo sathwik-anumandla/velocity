@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: velocity-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hindsight}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-velocity_secure_hindsight_db_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-hindsight}
+    ports:
+      - "5433:5432"
+    volumes:
+      - velocity-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hindsight} -d ${POSTGRES_DB:-hindsight}"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  hindsight:
+    image: ghcr.io/vectorize-io/hindsight:latest-slim
+    container_name: velocity-hindsight
+    restart: unless-stopped
+    shm_size: 1g
+    ports:
+      - "8888:8888"   # Hindsight Core REST API & MCP
+      - "9999:9999"   # Hindsight Control Plane Web UI
+    environment:
+      - HINDSIGHT_API_DATABASE_URL=postgresql://${POSTGRES_USER:-hindsight}:${POSTGRES_PASSWORD:-velocity_secure_hindsight_db_pass}@postgres:5432/${POSTGRES_DB:-hindsight}
+      - HINDSIGHT_API_WORKER_ID=${HINDSIGHT_API_WORKER_ID:-velocity-worker-1}
+      - HINDSIGHT_API_EMBEDDINGS_PROVIDER=openai
+      - HINDSIGHT_API_EMBEDDINGS_OPENAI_MODEL=text-embedding-3-small
+      - HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY=${OPENAI_API_KEY}
+      - HINDSIGHT_API_EMBEDDINGS_OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - HINDSIGHT_API_LLM_PROVIDER=${RETAIN_LLM_PROVIDER:-openai}
+      - HINDSIGHT_API_LLM_MODEL=${RETAIN_LLM_MODEL:-gpt-4o-mini}
+      - HINDSIGHT_API_LLM_API_KEY=${OPENAI_API_KEY}
+      - HINDSIGHT_API_LLM_BASE_URL=${OPENAI_BASE_URL:-}
+      - HINDSIGHT_API_RETAIN_LLM_PROVIDER=${RETAIN_LLM_PROVIDER:-openai}
+      - HINDSIGHT_API_RETAIN_LLM_MODEL=${RETAIN_LLM_MODEL:-gpt-4o-mini}
+      - HINDSIGHT_API_RETAIN_LLM_API_KEY=${OPENAI_API_KEY}
+      - HINDSIGHT_API_RETAIN_LLM_BASE_URL=${OPENAI_BASE_URL:-}
+      - HINDSIGHT_API_RERANKER_PROVIDER=rrf
+      - HINDSIGHT_API_ENABLE_RERANKING=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: velocity-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - velocity-sqlite-data:/app/data
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - LLM_MODEL_ID=${LLM_MODEL_ID:-gpt-5.6}
+      - CLASSIFIER_MODEL_ID=${CLASSIFIER_MODEL_ID:-gpt-4o-mini}
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - HINDSIGHT_API_URL=http://hindsight:8888
+      - HINDSIGHT_BANK_ID=${HINDSIGHT_BANK_ID:-personal-agent}
+      - SQLITE_DB_PATH=/app/data/velocity.db
+    depends_on:
+      - hindsight
+
+volumes:
+  velocity-postgres-data:
+    name: velocity-postgres-data
+  velocity-sqlite-data:
+    name: velocity-sqlite-data

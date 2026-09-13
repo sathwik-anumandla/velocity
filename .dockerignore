@@ -1,0 +1,13 @@
+.venv
+__pycache__
+*.pyc
+.git
+.vscode
+data/*.db
+data/*.db-*
+.env
+app/
+*.app
+build/
+.dart_tool/
+.DS_Store
