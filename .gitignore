@@ -5,6 +5,8 @@
 *.pem
 *.key
 
+.vscode/
+
 # Custom Private System Prompts (keeps your personal prompt private on GitHub)
 config/system_prompt.json
 config/system_prompt.md
@@ -94,3 +96,12 @@ coverage/
 *.log
 *.tmp
 *.bak
+
+# Node & Web Frontend
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.vercel/
+**/dist-ssr/
+

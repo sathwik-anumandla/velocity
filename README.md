@@ -148,10 +148,12 @@ Validates:
 velocity/
 ├── backend/            # FastAPI server, Hindsight client, prompts, and SQLite FTS5
 ├── config/             # System prompt configuration (example template + private JSON)
-├── app/                # Flutter application (macOS Desktop & Web)
+├── app/                # Flutter application (macOS Desktop, Android, and Web)
+│   ├── android/        # Android Gradle & Kotlin project
 │   ├── lib/            # Models, providers, views, and services
 │   ├── macos/          # Native macOS Runner & entitlements
 │   └── web/            # Web entry point and fonts
+├── landing/            # Vercel showcase website (React + Vite + Tailwind CSS)
 ├── tests/              # End-to-end integration tests
 ├── docker-compose.yml  # Multi-container orchestration (Backend + Hindsight + Postgres)
 ├── Dockerfile          # Backend container specification
