@@ -101,7 +101,7 @@ temp_sessions: Dict[str, Dict[str, Any]] = {}
 
 # Global clients
 hindsight_client = HindsightClient()
-responses_runner = ResponsesRunner()
+responses_runner = ResponsesRunner(hindsight=hindsight_client)
 
 
 @asynccontextmanager

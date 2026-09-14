@@ -1,8 +1,12 @@
 """
 Velocity Responses API Runner
-Invokes Luna (OpenAI GPT-5.6 / configured model) via the Responses API.
-Handles reasoning effort toggle, prompt_cache_key, Tavily search tool calling,
-and buffered streaming (flushed every ~20-30 tokens or at sentence boundaries).
+Invokes the OpenAI Responses API with:
+- Reasoning effort toggles
+- Output text verbosity controls
+- Prompt cache key
+- Web search tool (Tavily)
+- Cognitive memory tools (Hindsight: consult_memory, read_mental_model)
+- Buffered streaming deltas (flushed every ~20-30 tokens or at sentence boundaries)
 """
 
 import os
@@ -14,6 +18,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from dotenv import load_dotenv
 import openai
 from backend.tavily_tool import TavilySearchTool, TAVILY_TOOL_DEFINITION
+from backend.hindsight import HindsightClient
 
 load_dotenv()
 
@@ -22,9 +27,60 @@ logger = logging.getLogger("velocity.runner")
 # Sentence boundary patterns: period/exclamation/question mark followed by space or newline, or double newline
 SENTENCE_BOUNDARY_PATTERN = re.compile(r'([.?!](\s+|$))|(\n\n)')
 
+CONSULT_MEMORY_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "consult_memory",
+    "description": (
+        "Run an agentic reflection across long-term memory, past conversations, decisions, "
+        "and observations in Hindsight. Use this when the user asks 'why' a decision was made, "
+        "questions about past projects, discussions, or when you need deep historical context beyond the immediate turn."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "The natural language question or topic to research across past memory.",
+            }
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+}
+
+READ_MENTAL_MODEL_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "read_mental_model",
+    "description": (
+        "Read a standing, pre-synthesized knowledge document from Hindsight memory. "
+        "Available models: "
+        "'projects-and-decisions' (detailed architecture, stack, technical decisions & rationale for projects), "
+        "'goals-and-interests' (long-term goals, curiosity topics, and research directions), "
+        "'current-context' (active focus, open loops, and immediate objectives), "
+        "'user-persona' (user communication taste, philosophy, and aesthetic preferences)."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "model_name": {
+                "type": "string",
+                "enum": [
+                    "projects-and-decisions",
+                    "goals-and-interests",
+                    "current-context",
+                    "user-persona",
+                ],
+                "description": "The ID of the mental model to retrieve.",
+            }
+        },
+        "required": ["model_name"],
+        "additionalProperties": False,
+    },
+}
+
 
 class ResponsesRunner:
-    def __init__(self):
+    def __init__(self, hindsight: Optional[HindsightClient] = None):
         self.api_key = os.getenv("OPENAI_API_KEY", "").strip()
         self.base_url = (os.getenv("OPENAI_BASE_URL", "") or "https://api.openai.com/v1").strip().rstrip("/")
         self.model = os.getenv("LLM_MODEL_ID", "gpt-5.6-luna").strip()
@@ -33,6 +89,7 @@ class ResponsesRunner:
             base_url=self.base_url,
         )
         self.tavily = TavilySearchTool()
+        self.hindsight = hindsight or HindsightClient()
 
     def _should_flush(self, buffer: str) -> bool:
         """
@@ -63,7 +120,7 @@ class ResponsesRunner:
         max_tool_hops: int = 5,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Executes a multi-turn turn loop with the Responses API and streams buffered deltas.
+        Executes a multi-turn loop with the Responses API and streams buffered deltas.
         Yields SSE dictionaries: {"event": str, "data": str}.
         """
         # Dynamically reload environment from .env if updated
@@ -79,7 +136,15 @@ class ResponsesRunner:
 
         prompt_cache_key = f"temp:{session_id}" if is_temporary else session_id
         current_input = list(input_items)
-        tools = [TAVILY_TOOL_DEFINITION] if self.tavily.is_configured else []
+
+        # Assemble active tools
+        tools: List[Dict[str, Any]] = []
+        if self.tavily.is_configured:
+            tools.append(TAVILY_TOOL_DEFINITION)
+
+        if self.hindsight.check_health():
+            tools.append(CONSULT_MEMORY_TOOL_DEFINITION)
+            tools.append(READ_MENTAL_MODEL_TOOL_DEFINITION)
 
         full_assistant_text = ""
         total_usage: Dict[str, Any] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
@@ -90,7 +155,7 @@ class ResponsesRunner:
             loop = asyncio.get_running_loop()
 
             def make_stream():
-                # Note: reasoning effort & verbosity passed to Responses API
+                # Reasoning effort & verbosity passed to Responses API
                 req_kwargs: Dict[str, Any] = {
                     "model": self.model,
                     "instructions": instructions,
@@ -105,7 +170,7 @@ class ResponsesRunner:
                 if verbosity in ("low", "medium", "high"):
                     req_kwargs["text"] = {"verbosity": verbosity}
 
-                logger.info(f"Invoking Responses API with model='{self.model}' (reasoning='{thinking_effort}', verbosity='{verbosity}')")
+                logger.info(f"Invoking Responses API with model='{self.model}' (reasoning='{thinking_effort}', verbosity='{verbosity}', tools={[t['name'] for t in tools]})")
                 return self.client.responses.create(**req_kwargs)
 
             try:
@@ -218,10 +283,9 @@ class ResponsesRunner:
 
                     yield {
                         "event": "tool_start",
-                        "data": json.dumps({"tool": "tavily_search", "query": query}),
+                        "data": json.dumps({"tool": "tavily_search", "query": f"Searching web: {query}"}),
                     }
 
-                    # Execute Tavily search
                     tool_output = await loop.run_in_executor(None, self.tavily.search, query)
 
                     yield {
@@ -229,18 +293,75 @@ class ResponsesRunner:
                         "data": json.dumps({"tool": "tavily_search"}),
                     }
 
-                    # Append function call and function call output to current input
-                    current_input.append({
-                        "type": "function_call",
-                        "call_id": call_id,
-                        "name": fn_name,
-                        "arguments": fn_args_raw,
-                    })
-                    current_input.append({
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": tool_output,
-                    })
+                elif fn_name == "consult_memory":
+                    query = ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        query = parsed_args.get("query", "")
+                    except Exception:
+                        query = fn_args_raw
+
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "consult_memory", "query": f"Consulting memory: {query}"}),
+                    }
+
+                    answer, citations, status = await loop.run_in_executor(
+                        None, self.hindsight.reflect, query, "mid"
+                    )
+                    if answer:
+                        tool_output = f"[Hindsight Memory Result]:\n{answer}"
+                        if citations:
+                            tool_output += f"\n\n[Citations]: {json.dumps(citations)}"
+                    else:
+                        tool_output = "[No specific memories or decisions found for this query in Hindsight]"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "consult_memory"}),
+                    }
+
+                elif fn_name == "read_mental_model":
+                    model_name = ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        model_name = parsed_args.get("model_name", "")
+                    except Exception:
+                        model_name = fn_args_raw
+
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "read_mental_model", "query": f"Reading mental model: {model_name}"}),
+                    }
+
+                    content = await loop.run_in_executor(
+                        None, self.hindsight.get_mental_model, model_name
+                    )
+                    if content:
+                        tool_output = f"[Mental Model '{model_name}']:\n{content}"
+                    else:
+                        tool_output = f"[Mental Model '{model_name}' is not yet available or empty]"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "read_mental_model"}),
+                    }
+
+                else:
+                    tool_output = f"[Unknown tool: {fn_name}]"
+
+                # Append function call and function call output to current input
+                current_input.append({
+                    "type": "function_call",
+                    "call_id": call_id,
+                    "name": fn_name,
+                    "arguments": fn_args_raw,
+                })
+                current_input.append({
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": tool_output,
+                })
 
         # Completed all iterations
         yield {
