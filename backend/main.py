@@ -12,7 +12,8 @@ import logging
 import asyncio
 from datetime import datetime
 from contextlib import asynccontextmanager
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal
+from pydantic import BaseModel
 
 from fastapi import FastAPI, HTTPException, Query, Path
 from fastapi.middleware.cors import CORSMiddleware
@@ -112,6 +113,10 @@ async def lifespan(app: FastAPI):
         os.makedirs(db_dir, exist_ok=True)
     init_db()
     logger.info("Velocity Persistence initialized (SQLite + FTS5)")
+
+    # Bootstrap Hindsight memory bank & foundational mental models in the background
+    asyncio.create_task(asyncio.to_thread(hindsight_client.bootstrap_memory_bank))
+
     yield
     # Shutdown
 
@@ -390,6 +395,9 @@ async def chat_stream(request: ChatRequest):
                 else:
                     db_update_session(session_id, summary=new_summary)
 
+    # Fetch hot mental models (user-persona & current-context) from cache (< 1ms warm, < 30ms cold)
+    hot_memory = await asyncio.to_thread(hindsight_client.get_hot_context)
+
     # Compose Responses API input in strict cache-optimal order
     instructions, input_items = compose_responses_input(
         messages=history_messages,
@@ -397,6 +405,7 @@ async def chat_stream(request: ChatRequest):
         recall_memories=recalled_memories,
         new_user_message=user_message,
         verbosity=verbosity,
+        hot_memory=hot_memory,
     )
 
     async def event_generator():
@@ -435,12 +444,15 @@ async def chat_stream(request: ChatRequest):
                     "data": raw_data,
                 }
 
-        # Step 4: Synchronous Retain after exchange
+        # Step 4: Retain after exchange using structured format, stable document_id & TEMPR tags
+        session_title = session.get("name") if session else (renamed_title or "New Chat")
         retain_status = await asyncio.to_thread(
-            hindsight_client.retain_sync,
+            hindsight_client.retain_turn,
             user_message=user_message,
             assistant_response=full_assistant_response,
             session_id=session_id,
+            session_name=session_title,
+            async_retain=True,
         )
         if retain_status == "degraded" or overall_memory_status == "degraded":
             overall_memory_status = "degraded"
@@ -504,3 +516,45 @@ async def chat_stream(request: ChatRequest):
         }
 
     return EventSourceResponse(event_generator())
+
+
+# ==============================================================================
+# 4. Cognitive Memory Endpoints (Mental Models & Reflect)
+# ==============================================================================
+class ReflectRequest(BaseModel):
+    query: str
+    budget: Optional[Literal["low", "mid", "high"]] = "mid"
+
+
+@app.get("/memory/mental-models")
+async def get_mental_models():
+    """
+    Retrieve all foundational mental models and their synthesized markdown content.
+    """
+    model_ids = ["current-context", "user-persona", "projects-and-decisions", "goals-and-interests"]
+    items = []
+    for mid in model_ids:
+        content = await asyncio.to_thread(hindsight_client.get_mental_model, mid)
+        items.append({
+            "id": mid,
+            "content": content,
+            "is_ready": bool(content and content != "Generating content..."),
+        })
+    return {"items": items}
+
+
+@app.post("/memory/reflect")
+async def reflect_memory(req: ReflectRequest):
+    """
+    Execute an agentic reflect query across mental models, observations, and raw facts.
+    """
+    answer, citations, status = await asyncio.to_thread(
+        hindsight_client.reflect, req.query, req.budget or "mid"
+    )
+    return {
+        "query": req.query,
+        "answer": answer,
+        "citations": citations,
+        "status": status,
+    }
+

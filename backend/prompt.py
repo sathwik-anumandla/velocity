@@ -232,10 +232,11 @@ def compose_responses_input(
     recall_memories: List[str],
     new_user_message: str,
     verbosity: str = "medium",
+    hot_memory: Optional[Dict[str, str]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Composes the Responses API input strictly following the cache-optimal order:
-    1. system prompt (returned as instructions) + verbosity directive
+    1. system prompt (returned as instructions) + verbosity directive + hot mental models
     2. windowed conversation history (summary + verbatim tail of last 6 messages)
     3. recall results (this turn)
     4. new user message
@@ -254,6 +255,20 @@ def compose_responses_input(
             "\n\n[Verbosity Directive]: Respond with High / Detailed verbosity. "
             "Provide in-depth explanations, thorough background context, edge cases, and complete examples."
         )
+
+    # Inject persistent hot mental models into instructions
+    if hot_memory:
+        user_persona = hot_memory.get("user-persona")
+        if user_persona and user_persona.strip():
+            instructions += (
+                f"\n\n[Persistent Memory - User Persona & Philosophy]:\n{user_persona.strip()}"
+            )
+        current_context = hot_memory.get("current-context")
+        if current_context and current_context.strip():
+            instructions += (
+                f"\n\n[Persistent Memory - Current Context & Open Loops]:\n{current_context.strip()}"
+            )
+
     input_items: List[Dict[str, Any]] = []
 
     # 2. Windowed conversation history
