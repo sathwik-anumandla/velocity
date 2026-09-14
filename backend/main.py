@@ -445,19 +445,20 @@ async def chat_stream(request: ChatRequest):
                 }
 
         # Step 4: Retain after exchange using structured format, stable document_id & TEMPR tags
-        session_title = session.get("name") if session else (renamed_title or "New Chat")
-        retain_status = await asyncio.to_thread(
-            hindsight_client.retain_turn,
-            user_message=user_message,
-            assistant_response=full_assistant_response,
-            session_id=session_id,
-            session_name=session_title,
-            async_retain=True,
-        )
-        if retain_status == "degraded" or overall_memory_status == "degraded":
-            overall_memory_status = "degraded"
-        else:
-            overall_memory_status = "ok"
+        if not is_temp:
+            session_title = session.get("name") if session else (renamed_title or "New Chat")
+            retain_status = await asyncio.to_thread(
+                hindsight_client.retain_turn,
+                user_message=user_message,
+                assistant_response=full_assistant_response,
+                session_id=session_id,
+                session_name=session_title,
+                async_retain=True,
+            )
+            if retain_status == "degraded" or overall_memory_status == "degraded":
+                overall_memory_status = "degraded"
+            else:
+                overall_memory_status = "ok"
 
         # Step 5: Persistence
         new_total_tokens = usage_data.get("total_tokens", last_tokens)

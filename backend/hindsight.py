@@ -9,6 +9,7 @@ Comprehensive memory integration with Hindsight:
 """
 
 import os
+import json
 import time
 import logging
 import requests
@@ -269,6 +270,58 @@ class HindsightClient:
         except Exception:
             return None, [], "degraded"
 
+    def retain(
+        self,
+        content: str,
+        context: Optional[str] = None,
+        document_id: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, str]] = None,
+        timestamp: Optional[str] = None,
+        update_mode: str = "replace",
+        async_retain: bool = True,
+    ) -> str:
+        """
+        Ingests a generic content document into Hindsight memory.
+        """
+        self._drain_retry_queue()
+
+        now_iso = timestamp or datetime.now(timezone.utc).isoformat()
+        url = f"{self.base_url}/v1/default/banks/{self.bank_id}/memories"
+
+        item: Dict[str, Any] = {
+            "content": content,
+            "timestamp": now_iso,
+        }
+        if context:
+            item["context"] = context
+        if document_id:
+            item["document_id"] = document_id
+            item["update_mode"] = update_mode
+        if tags:
+            item["tags"] = tags
+        if metadata:
+            item["metadata"] = metadata
+
+        payload = {
+            "async": async_retain,
+            "items": [item],
+        }
+
+        try:
+            resp = requests.post(url, json=payload, timeout=self.retain_timeout)
+            if resp.status_code in (200, 201, 202):
+                return "ok"
+            else:
+                logger.warning(f"Hindsight retain returned status {resp.status_code}: {resp.text}")
+                if resp.status_code >= 500:
+                    self.retry_queue.append(payload)
+                return "degraded"
+        except Exception as e:
+            logger.warning(f"Hindsight retain request failed: {e}")
+            self.retry_queue.append(payload)
+            return "degraded"
+
     def retain_turn(
         self,
         user_message: str,
@@ -279,28 +332,33 @@ class HindsightClient:
     ) -> str:
         """
         Retains an interaction turn into Hindsight following best practices:
-        - Structured JSON conversation format (preserves roles, sequence, timestamps)
-        - Stable document_id upserting (`session-{session_id}`) to avoid duplicate memory bloat
+        - Structured JSON conversation format (serialized as valid JSON string)
+        - Stable document_id (`session-{session_id}`) with update_mode='append' to maintain full conversation thread
         - Descriptive domain context
         - Tagging for strict session filtering
         - ISO-8601 timestamps for TEMPR temporal reasoning
         """
+        if not (user_message and user_message.strip()) or not (assistant_response and assistant_response.strip()):
+            logger.info("Skipping Hindsight retain for empty turn.")
+            return "ok"
+
         self._drain_retry_queue()
 
         now_iso = datetime.now(timezone.utc).isoformat()
         url = f"{self.base_url}/v1/default/banks/{self.bank_id}/memories"
 
-        content = [
-            {"role": "user", "content": user_message, "timestamp": now_iso},
-            {"role": "assistant", "content": assistant_response, "timestamp": now_iso},
+        conversation = [
+            {"role": "user", "content": user_message.strip(), "timestamp": now_iso},
+            {"role": "assistant", "content": assistant_response.strip(), "timestamp": now_iso},
         ]
 
         payload = {
             "async": async_retain,
             "items": [
                 {
-                    "content": content,
+                    "content": json.dumps(conversation),
                     "document_id": f"session-{session_id}",
+                    "update_mode": "append",
                     "context": f"Velocity pair-programming chat in session '{session_name or session_id}'",
                     "tags": [f"session:{session_id}", "source:velocity-chat"],
                     "timestamp": now_iso,
@@ -314,9 +372,12 @@ class HindsightClient:
             if resp.status_code in (200, 201, 202):
                 return "ok"
             else:
-                self.retry_queue.append(payload)
+                logger.warning(f"Hindsight retain returned status {resp.status_code}: {resp.text}")
+                if resp.status_code >= 500:
+                    self.retry_queue.append(payload)
                 return "degraded"
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Hindsight retain request failed: {e}")
             self.retry_queue.append(payload)
             return "degraded"
 
@@ -350,6 +411,10 @@ class HindsightClient:
             try:
                 resp = requests.post(url, json=item, timeout=self.retain_timeout)
                 if resp.status_code not in (200, 201, 202):
-                    self.retry_queue.append(item)
+                    if resp.status_code >= 500:
+                        self.retry_queue.append(item)
+                    else:
+                        logger.warning(f"Dropping unretryable item from retry queue ({resp.status_code}): {resp.text}")
             except Exception:
                 self.retry_queue.append(item)
+
