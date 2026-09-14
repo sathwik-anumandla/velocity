@@ -15,6 +15,7 @@ class SidebarView extends StatefulWidget {
 class _SidebarViewState extends State<SidebarView> with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -32,6 +33,7 @@ class _SidebarViewState extends State<SidebarView> with SingleTickerProviderStat
   @override
   void dispose() {
     _pulseController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -107,7 +109,7 @@ class _SidebarViewState extends State<SidebarView> with SingleTickerProviderStat
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Sidebar Brand Header (Only Velocity)
+          // 1. Sidebar Brand Header (Velocity + Search Button + Collapse Button)
           Padding(
             padding: const EdgeInsets.only(left: 6, right: 2, top: 4, bottom: 12),
             child: Row(
@@ -123,6 +125,19 @@ class _SidebarViewState extends State<SidebarView> with SingleTickerProviderStat
                 ),
                 const Spacer(),
                 IconButton(
+                  tooltip: 'Search (⌘K)',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(LucideIcons.search, size: 17, color: textMuted),
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const SearchDialog(),
+                    );
+                  },
+                ),
+                const SizedBox(width: 4),
+                IconButton(
                   tooltip: 'Close sidebar (⌘B)',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -133,12 +148,12 @@ class _SidebarViewState extends State<SidebarView> with SingleTickerProviderStat
             ),
           ),
 
-          // 2. Action Buttons: New Session & Search
+          // 2. Action Button: New Chat
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () => provider.createNewSession(isTemporary: false),
+              onTap: () => provider.startNewChat(isTemporary: false),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
@@ -157,40 +172,6 @@ class _SidebarViewState extends State<SidebarView> with SingleTickerProviderStat
                         color: textPrimary,
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () {
-                showDialog(
-                  context: context,
-                  builder: (_) => const SearchDialog(),
-                );
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(LucideIcons.search, size: 15, color: textMuted),
-                    const SizedBox(width: 10),
-                    Text(
-                      'Search',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: textMuted,
-                      ),
-                    ),
                     const Spacer(),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -199,10 +180,10 @@ class _SidebarViewState extends State<SidebarView> with SingleTickerProviderStat
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        '⌘K',
+                        '⌘⇧O',
                         style: TextStyle(
                           fontFamily: 'monospace',
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: FontWeight.w700,
                           color: textMuted,
                         ),
@@ -254,10 +235,22 @@ class _SidebarViewState extends State<SidebarView> with SingleTickerProviderStat
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: textMuted),
                         ),
                       )
-                    : ListView.builder(
-                        itemCount: provider.sessions.length,
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        itemBuilder: (context, index) {
+                    : ScrollConfiguration(
+                        behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                        child: RawScrollbar(
+                          controller: _scrollController,
+                          thumbColor: isDark ? const Color(0x38FFFFFF) : const Color(0x28000000),
+                          radius: const Radius.circular(4),
+                          thickness: 3.5,
+                          interactive: true,
+                          fadeDuration: const Duration(milliseconds: 250),
+                          timeToFade: const Duration(milliseconds: 800),
+                          padding: const EdgeInsets.only(right: 2),
+                          child: ListView.builder(
+                            controller: _scrollController,
+                            itemCount: provider.sessions.length,
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            itemBuilder: (context, index) {
                           final session = provider.sessions[index];
                           final isSelected = provider.currentSession?.id == session.id;
 
@@ -353,6 +346,8 @@ class _SidebarViewState extends State<SidebarView> with SingleTickerProviderStat
                           );
                         },
                       ),
+                    ),
+                  ),
           ),
 
           // 5. Footer: Glowing Hindsight Memory Button + Theme Toggle

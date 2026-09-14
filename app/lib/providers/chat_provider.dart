@@ -54,10 +54,13 @@ class ChatProvider extends ChangeNotifier {
 
   String _recallBudget = 'medium';
   String _thinkingEffort = 'medium';
+  String _verbosity = 'low';
+  bool _isTemporaryMode = false;
 
   String get recallBudget => _currentSession?.recallBudget ?? _recallBudget;
   String get thinkingEffort => _currentSession?.thinkingEffort ?? _thinkingEffort;
-  bool get isTemporary => _currentSession?.isTemporary ?? false;
+  String get verbosity => _currentSession?.verbosity ?? _verbosity;
+  bool get isTemporary => _isTemporaryMode || (_currentSession?.isTemporary ?? false);
 
   ChatProvider() {
     init();
@@ -82,10 +85,8 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final list = await _api.listSessions();
-      // Keep any active temporary sessions that are in memory
-      final tempSessions = _sessions.where((s) => s.isTemporary).toList();
-      _sessions = [...tempSessions, ...list];
-      if (_currentSession == null && _sessions.isNotEmpty) {
+      _sessions = list;
+      if (_currentSession == null && !_isTemporaryMode && _sessions.isNotEmpty) {
         await selectSession(_sessions.first);
       }
     } catch (e) {
@@ -98,9 +99,11 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> selectSession(Session session) async {
     if (_isGenerating) return;
+    _isTemporaryMode = false;
     _currentSession = session;
     _recallBudget = session.recallBudget;
     _thinkingEffort = session.thinkingEffort;
+    _verbosity = session.verbosity;
     if (!_openTabIds.contains(session.id)) {
       _openTabIds.add(session.id);
     }
@@ -139,7 +142,7 @@ class ChatProvider extends ChangeNotifier {
       if (_openTabIds.isNotEmpty) {
         selectTab(_openTabIds.last);
       } else {
-        createNewSession();
+        startNewChat();
       }
     } else {
       notifyListeners();
@@ -147,15 +150,15 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void toggleTemporary() {
-    if (_currentSession?.isTemporary == true) {
-      final nonTemp = _sessions.where((s) => !s.isTemporary).toList();
-      if (nonTemp.isNotEmpty) {
-        selectSession(nonTemp.first);
+    if (isTemporary) {
+      _isTemporaryMode = false;
+      if (_sessions.isNotEmpty) {
+        selectSession(_sessions.first);
       } else {
-        createNewSession(isTemporary: false);
+        startNewChat(isTemporary: false);
       }
     } else {
-      createNewSession(isTemporary: true);
+      startNewChat(isTemporary: true);
     }
   }
 
@@ -190,37 +193,19 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> createNewSession({bool isTemporary = false}) async {
+  void startNewChat({bool isTemporary = false}) {
     if (_isGenerating) return;
+    _currentSession = null;
+    _messages = [];
+    _isTemporaryMode = isTemporary;
+    _recallBudget = 'medium';
+    _thinkingEffort = 'medium';
+    _verbosity = 'low';
+    notifyListeners();
+  }
 
-    if (isTemporary) {
-      final now = DateTime.now();
-      final tempId = 'temp-${now.millisecondsSinceEpoch}';
-      final tempSess = Session(
-        id: tempId,
-        name: 'Temporary Session',
-        recallBudget: _recallBudget,
-        thinkingEffort: _thinkingEffort,
-        createdAt: now,
-        updatedAt: now,
-        isTemporary: true,
-      );
-      _sessions.insert(0, tempSess);
-      await selectSession(tempSess);
-      return;
-    }
-
-    try {
-      final newSess = await _api.createSession(
-        name: 'New Chat',
-        recallBudget: _recallBudget,
-        thinkingEffort: _thinkingEffort,
-      );
-      _sessions.insert(0, newSess);
-      await selectSession(newSess);
-    } catch (e) {
-      debugPrint('Error creating session: $e');
-    }
+  Future<void> createNewSession({bool isTemporary = false}) async {
+    startNewChat(isTemporary: isTemporary);
   }
 
   Future<void> renameSession(String sessionId, String newName) async {
@@ -252,12 +237,10 @@ class ChatProvider extends ChangeNotifier {
     _sessions.removeAt(idx);
 
     if (_currentSession?.id == sessionId) {
-      _currentSession = _sessions.isNotEmpty ? _sessions.first : null;
-      if (_currentSession != null) {
-        await selectSession(_currentSession!);
+      if (_sessions.isNotEmpty) {
+        await selectSession(_sessions.first);
       } else {
-        _messages = [];
-        notifyListeners();
+        startNewChat(isTemporary: false);
       }
     } else {
       notifyListeners();
@@ -304,6 +287,22 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> setVerbosity(String level) async {
+    _verbosity = level;
+    if (_currentSession != null) {
+      _currentSession!.verbosity = level;
+    }
+    notifyListeners();
+
+    if (_currentSession != null && !_currentSession!.isTemporary) {
+      try {
+        await _api.updateSession(_currentSession!.id, verbosity: level);
+      } catch (e) {
+        debugPrint('Error updating verbosity: $e');
+      }
+    }
+  }
+
   Future<void> search(String query) async {
     if (query.trim().isEmpty) {
       _searchResults = [];
@@ -328,9 +327,39 @@ class ChatProvider extends ChangeNotifier {
     if (cleanText.isEmpty || _isGenerating) return;
 
     if (_currentSession == null) {
-      await createNewSession();
+      if (_isTemporaryMode) {
+        final now = DateTime.now();
+        final tempId = 'temp-${now.millisecondsSinceEpoch}';
+        _currentSession = Session(
+          id: tempId,
+          name: 'Temporary Chat',
+          recallBudget: _recallBudget,
+          thinkingEffort: _thinkingEffort,
+          verbosity: _verbosity,
+          createdAt: now,
+          updatedAt: now,
+          isTemporary: true,
+        );
+      } else {
+        try {
+          final newSess = await _api.createSession(
+            name: 'New Chat',
+            recallBudget: _recallBudget,
+            thinkingEffort: _thinkingEffort,
+            verbosity: _verbosity,
+          );
+          _sessions.insert(0, newSess);
+          _currentSession = newSess;
+        } catch (e) {
+          debugPrint('Error creating session: $e');
+          return;
+        }
+      }
     }
     final session = _currentSession!;
+    if (!_openTabIds.contains(session.id)) {
+      _openTabIds.add(session.id);
+    }
 
     final userMsg = ChatMessage(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -343,6 +372,7 @@ class ChatProvider extends ChangeNotifier {
 
     final currentRecallBudget = recallBudget;
     final currentThinkingEffort = thinkingEffort;
+    final currentVerbosity = verbosity;
 
     final assistantMsg = ChatMessage(
       id: (DateTime.now().microsecondsSinceEpoch + 1).toString(),
@@ -378,6 +408,7 @@ class ChatProvider extends ChangeNotifier {
       message: cleanText,
       recallBudget: currentRecallBudget,
       thinkingEffort: currentThinkingEffort,
+      verbosity: currentVerbosity,
       isTemporary: session.isTemporary,
       onThinking: () {
         _isThinking = true;

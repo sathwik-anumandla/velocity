@@ -72,6 +72,7 @@ class ApiService {
     String? name,
     String recallBudget = 'medium',
     String thinkingEffort = 'medium',
+    String verbosity = 'low',
   }) async {
     final response = await _client.post(
       Uri.parse('$baseUrl/sessions'),
@@ -80,6 +81,7 @@ class ApiService {
         if (name != null && name.isNotEmpty) 'name': name,
         'recall_budget': recallBudget,
         'thinking_effort': thinkingEffort,
+        'verbosity': verbosity,
       }),
     );
     if (response.statusCode == 200) {
@@ -94,11 +96,13 @@ class ApiService {
     String? name,
     String? recallBudget,
     String? thinkingEffort,
+    String? verbosity,
   }) async {
     final body = <String, dynamic>{};
     if (name != null) body['name'] = name;
     if (recallBudget != null) body['recall_budget'] = recallBudget;
     if (thinkingEffort != null) body['thinking_effort'] = thinkingEffort;
+    if (verbosity != null) body['verbosity'] = verbosity;
 
     final response = await _client.patch(
       Uri.parse('$baseUrl/sessions/$sessionId'),
@@ -146,6 +150,7 @@ class ApiService {
     required String message,
     String? recallBudget,
     String? thinkingEffort,
+    String? verbosity,
     bool isTemporary = false,
     required Function() onThinking,
     required Function(String query) onToolStart,
@@ -162,6 +167,7 @@ class ApiService {
       'message': message,
       if (recallBudget != null) 'recall_budget': recallBudget,
       if (thinkingEffort != null) 'thinking_effort': thinkingEffort,
+      if (verbosity != null) 'verbosity': verbosity,
       'is_temporary': isTemporary,
     });
 

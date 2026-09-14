@@ -7,6 +7,11 @@
 
 .vscode/
 
+# Skills & Agent Workspaces
+.agents/
+.claude/
+skills-lock.json
+
 
 # Custom Private System Prompts (keeps your personal prompt private on GitHub)
 config/system_prompt.json

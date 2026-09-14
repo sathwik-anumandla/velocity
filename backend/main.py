@@ -69,21 +69,22 @@ def classify_and_rename_session(user_message: str, session_id: str) -> Optional[
 
     try:
         client = openai.OpenAI(api_key=api_key, base_url=base_url)
-        response = client.chat.completions.create(
-            model=classifier_model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a concise conversation titler. Generate a clean 3 to 5 word title for a conversation that starts with the given user prompt. Return ONLY the title with no quotes, no markdown, and no punctuation at the end."
-                },
+        is_reasoning = any(prefix in classifier_model for prefix in ("o1", "o3", "gpt-5"))
+        kwargs = {
+            "model": classifier_model,
+            "messages": [
                 {
                     "role": "user",
-                    "content": user_message
+                    "content": f"Generate a clean 3 to 5 word title for a conversation that starts with this prompt: \"{user_message}\". Return ONLY the title with no quotes, no markdown, and no punctuation at the end."
                 }
             ],
-            max_tokens=20,
-            temperature=0.3,
-        )
+            "max_completion_tokens": 500 if is_reasoning else 50,
+        }
+        if is_reasoning:
+            kwargs["reasoning_effort"] = "low"
+        else:
+            kwargs["temperature"] = 0.3
+        response = client.chat.completions.create(**kwargs)
         title = response.choices[0].message.content.strip().strip('"\'')
         if title:
             db_update_session(session_id, name=title)
@@ -130,6 +131,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount Web UI (Flutter web or frontend dist)
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
+
+for candidate_path in [
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "build", "web"),
+    "/app/app/build/web",
+    "./app/build/web",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist"),
+    "/app/frontend/dist",
+    "./frontend/dist",
+]:
+    if os.path.exists(candidate_path):
+        app.mount("/ui", StaticFiles(directory=candidate_path, html=True), name="ui")
+        logger.info(f"Mounted Web UI from {candidate_path} at /ui")
+        break
+
+
+@app.get("/ui")
+async def ui_redirect():
+    return RedirectResponse(url="/ui/")
+
+
 # ==============================================================================
 # 1. Health Endpoint
 # ==============================================================================
@@ -139,6 +163,7 @@ async def root():
         "status": "online",
         "service": "Velocity Assistant Backend",
         "version": "1.0.0",
+        "ui": "/ui/",
     }
 
 
@@ -185,6 +210,7 @@ async def create_session(session_in: SessionCreate):
         name=session_in.name,
         recall_budget=session_in.recall_budget,
         thinking_effort=session_in.thinking_effort,
+        verbosity=session_in.verbosity,
     )
     return SessionResponse(**sess)
 
@@ -217,7 +243,7 @@ async def get_session_details(session_id: str = Path(...)):
 @app.patch("/sessions/{session_id}", response_model=SessionResponse)
 async def update_session_meta(session_id: str, patch: SessionUpdate):
     """
-    Update session name or sticky settings (recall_budget, thinking_effort).
+    Update session name or sticky settings (recall_budget, thinking_effort, verbosity).
     """
     session = db_get_session(session_id)
     if not session:
@@ -228,6 +254,7 @@ async def update_session_meta(session_id: str, patch: SessionUpdate):
         name=patch.name,
         recall_budget=patch.recall_budget,
         thinking_effort=patch.thinking_effort,
+        verbosity=patch.verbosity,
     )
     updated = db_get_session(session_id)
     return SessionResponse(**updated)
@@ -282,15 +309,19 @@ async def chat_stream(request: ChatRequest):
                 "last_tokens": 0,
                 "recall_budget": request.recall_budget or "medium",
                 "thinking_effort": request.thinking_effort or "medium",
+                "verbosity": request.verbosity or "low",
             }
         temp_state = temp_sessions[session_id]
         if request.recall_budget:
             temp_state["recall_budget"] = request.recall_budget
         if request.thinking_effort:
             temp_state["thinking_effort"] = request.thinking_effort
+        if request.verbosity:
+            temp_state["verbosity"] = request.verbosity
 
         recall_budget = temp_state["recall_budget"]
         thinking_effort = temp_state["thinking_effort"]
+        verbosity = temp_state.get("verbosity", "low")
         history_messages = list(temp_state["messages"])
         current_summary = temp_state["summary"]
         last_tokens = temp_state["last_tokens"]
@@ -301,6 +332,7 @@ async def chat_stream(request: ChatRequest):
                 session_id=session_id,
                 recall_budget=request.recall_budget or "medium",
                 thinking_effort=request.thinking_effort or "medium",
+                verbosity=request.verbosity or "low",
             )
 
         # Update sticky toggles if provided
@@ -309,12 +341,15 @@ async def chat_stream(request: ChatRequest):
             to_update["recall_budget"] = request.recall_budget
         if request.thinking_effort and request.thinking_effort != session["thinking_effort"]:
             to_update["thinking_effort"] = request.thinking_effort
+        if request.verbosity and request.verbosity != session.get("verbosity"):
+            to_update["verbosity"] = request.verbosity
         if to_update:
             db_update_session(session_id, **to_update)
             session = db_get_session(session_id)
 
         recall_budget = session["recall_budget"]
         thinking_effort = session["thinking_effort"]
+        verbosity = session.get("verbosity", "low")
         history_messages = db_get_messages(session_id)
         current_summary = session.get("summary")
         last_tokens = session.get("last_tokens") or 0
@@ -361,6 +396,7 @@ async def chat_stream(request: ChatRequest):
         current_summary=current_summary,
         recall_memories=recalled_memories,
         new_user_message=user_message,
+        verbosity=verbosity,
     )
 
     async def event_generator():
@@ -380,6 +416,7 @@ async def chat_stream(request: ChatRequest):
             input_items=input_items,
             session_id=session_id,
             thinking_effort=thinking_effort,
+            verbosity=verbosity,
             is_temporary=is_temp,
         ):
             ev = sse_item["event"]

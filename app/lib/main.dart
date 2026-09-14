@@ -37,6 +37,13 @@ class VelocityApp extends StatelessWidget {
           thumbVisibility: WidgetStatePropertyAll(false),
           trackVisibility: WidgetStatePropertyAll(false),
         ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
+          bodyMedium: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
+          bodySmall: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
+          labelLarge: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
+          labelMedium: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
+        ),
         colorScheme: const ColorScheme.light(
           primary: Color(0xFF000000),
           surface: Color(0xFFF4F4F5),
@@ -55,6 +62,13 @@ class VelocityApp extends StatelessWidget {
         scrollbarTheme: const ScrollbarThemeData(
           thumbVisibility: WidgetStatePropertyAll(false),
           trackVisibility: WidgetStatePropertyAll(false),
+        ),
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
+          bodyMedium: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
+          bodySmall: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
+          labelLarge: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
+          labelMedium: TextStyle(fontFamily: 'Satoshi', fontWeight: FontWeight.w500),
         ),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFFFFFFFF),

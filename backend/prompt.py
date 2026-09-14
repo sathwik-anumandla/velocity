@@ -231,10 +231,11 @@ def compose_responses_input(
     current_summary: Optional[str],
     recall_memories: List[str],
     new_user_message: str,
+    verbosity: str = "medium",
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Composes the Responses API input strictly following the cache-optimal order:
-    1. system prompt (returned as instructions)
+    1. system prompt (returned as instructions) + verbosity directive
     2. windowed conversation history (summary + verbatim tail of last 6 messages)
     3. recall results (this turn)
     4. new user message
@@ -243,6 +244,16 @@ def compose_responses_input(
     (instructions, input_items)
     """
     instructions = load_system_prompt()
+    if verbosity == "low":
+        instructions += (
+            "\n\n[Verbosity Directive]: Respond with Low / Concise verbosity. "
+            "Be direct, punchy, and eliminate conversational filler, fluff, or excessive preamble."
+        )
+    elif verbosity == "high":
+        instructions += (
+            "\n\n[Verbosity Directive]: Respond with High / Detailed verbosity. "
+            "Provide in-depth explanations, thorough background context, edge cases, and complete examples."
+        )
     input_items: List[Dict[str, Any]] = []
 
     # 2. Windowed conversation history

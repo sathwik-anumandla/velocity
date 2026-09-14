@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     message: str
     recall_budget: Optional[Literal["low", "medium", "high"]] = None
     thinking_effort: Optional[Literal["low", "medium", "high"]] = None
+    verbosity: Optional[Literal["low", "medium", "high"]] = None
     is_temporary: bool = False
 
 
@@ -19,12 +20,14 @@ class SessionCreate(BaseModel):
     name: Optional[str] = None
     recall_budget: Literal["low", "medium", "high"] = "medium"
     thinking_effort: Literal["low", "medium", "high"] = "medium"
+    verbosity: Literal["low", "medium", "high"] = "low"
 
 
 class SessionUpdate(BaseModel):
     name: Optional[str] = None
     recall_budget: Optional[Literal["low", "medium", "high"]] = None
     thinking_effort: Optional[Literal["low", "medium", "high"]] = None
+    verbosity: Optional[Literal["low", "medium", "high"]] = None
 
 
 class SessionResponse(BaseModel):
@@ -32,6 +35,7 @@ class SessionResponse(BaseModel):
     name: str
     recall_budget: str
     thinking_effort: str
+    verbosity: str = "low"
     created_at: str
     updated_at: str
 

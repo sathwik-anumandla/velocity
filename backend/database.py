@@ -41,12 +41,19 @@ def init_db() -> None:
         name TEXT NOT NULL,
         recall_budget TEXT NOT NULL DEFAULT 'medium',
         thinking_effort TEXT NOT NULL DEFAULT 'medium',
+        verbosity TEXT NOT NULL DEFAULT 'low',
         summary TEXT DEFAULT NULL,
         last_tokens INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     );
     """)
+
+    # Non-destructive migration: ensure verbosity column exists if DB was already created
+    cursor.execute("PRAGMA table_info(sessions);")
+    existing_cols = [col[1] for col in cursor.fetchall()]
+    if "verbosity" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN verbosity TEXT NOT NULL DEFAULT 'low';")
 
     # 2. Messages table
     cursor.execute("""
@@ -102,6 +109,7 @@ def create_session(
     name: Optional[str] = None,
     recall_budget: str = "medium",
     thinking_effort: str = "medium",
+    verbosity: str = "low",
 ) -> Dict[str, Any]:
     """
     Create a persistent named session. (Temporary sessions bypass SQLite entirely).
@@ -113,10 +121,10 @@ def create_session(
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO sessions (id, name, recall_budget, thinking_effort, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO sessions (id, name, recall_budget, thinking_effort, verbosity, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (session_id, session_name, recall_budget, thinking_effort, now, now),
+        (session_id, session_name, recall_budget, thinking_effort, verbosity, now, now),
     )
     conn.commit()
     conn.close()
@@ -125,6 +133,7 @@ def create_session(
         "name": session_name,
         "recall_budget": recall_budget,
         "thinking_effort": thinking_effort,
+        "verbosity": verbosity,
         "created_at": now,
         "updated_at": now,
     }
@@ -135,6 +144,7 @@ def update_session(
     name: Optional[str] = None,
     recall_budget: Optional[str] = None,
     thinking_effort: Optional[str] = None,
+    verbosity: Optional[str] = None,
     summary: Optional[str] = None,
     last_tokens: Optional[int] = None,
 ) -> bool:
@@ -154,6 +164,9 @@ def update_session(
     if thinking_effort is not None:
         updates.append("thinking_effort = ?")
         params.append(thinking_effort)
+    if verbosity is not None:
+        updates.append("verbosity = ?")
+        params.append(verbosity)
     if summary is not None:
         updates.append("summary = ?")
         params.append(summary)

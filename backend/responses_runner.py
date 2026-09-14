@@ -58,6 +58,7 @@ class ResponsesRunner:
         input_items: List[Dict[str, Any]],
         session_id: str,
         thinking_effort: str = "medium",
+        verbosity: str = "low",
         is_temporary: bool = False,
         max_tool_hops: int = 5,
     ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -89,7 +90,7 @@ class ResponsesRunner:
             loop = asyncio.get_running_loop()
 
             def make_stream():
-                # Note: reasoning effort toggle passed to Responses API
+                # Note: reasoning effort & verbosity passed to Responses API
                 req_kwargs: Dict[str, Any] = {
                     "model": self.model,
                     "instructions": instructions,
@@ -101,8 +102,10 @@ class ResponsesRunner:
                     req_kwargs["tools"] = tools
                 if thinking_effort in ("low", "medium", "high"):
                     req_kwargs["reasoning"] = {"effort": thinking_effort}
+                if verbosity in ("low", "medium", "high"):
+                    req_kwargs["text"] = {"verbosity": verbosity}
 
-                logger.info(f"Invoking Responses API with model='{self.model}' (reasoning='{thinking_effort}')")
+                logger.info(f"Invoking Responses API with model='{self.model}' (reasoning='{thinking_effort}', verbosity='{verbosity}')")
                 return self.client.responses.create(**req_kwargs)
 
             try:
