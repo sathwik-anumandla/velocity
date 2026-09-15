@@ -215,6 +215,32 @@ def delete_session(session_id: str) -> bool:
     return affected
 
 
+def truncate_messages_from(session_id: str, from_message_id: str) -> int:
+    """
+    Deletes the message with from_message_id and all subsequent messages in the session
+    ordered by created_at. Used when editing an earlier prompt or branching conversation.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT created_at FROM messages WHERE id = ? AND session_id = ?",
+        (from_message_id, session_id),
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return 0
+    target_ts = row["created_at"]
+    cursor.execute(
+        "DELETE FROM messages WHERE session_id = ? AND created_at >= ?",
+        (session_id, target_ts),
+    )
+    deleted_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return deleted_count
+
+
 def add_message(
     message_id: str,
     session_id: str,

@@ -121,6 +121,18 @@ class ApiService {
     return response.statusCode == 200;
   }
 
+  /// Truncate session messages from a given message ID onward
+  Future<bool> truncateMessagesFrom(String sessionId, String fromMessageId) async {
+    try {
+      final uri = Uri.parse('$baseUrl/sessions/$sessionId/messages')
+          .replace(queryParameters: {'from_message_id': fromMessageId});
+      final response = await _client.delete(uri);
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Get session message history
   Future<List<ChatMessage>> getSessionMessages(String sessionId) async {
     final response = await _client.get(Uri.parse('$baseUrl/sessions/$sessionId'));

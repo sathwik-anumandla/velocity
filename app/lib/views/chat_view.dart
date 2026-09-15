@@ -23,7 +23,7 @@ class _ChatViewState extends State<ChatView> {
   final FocusNode _focusNode = FocusNode();
 
   bool _isOptionsOpen = false;
-  String? _activeOptionMenu; // null, 'reasoning', 'recall', 'verbosity'
+  String? _activeOptionMenu; // null, 'effort', 'recall', 'verbosity'
   int? _editingMessageIndex;
   final TextEditingController _editController = TextEditingController();
   String? _copiedId;
@@ -537,11 +537,18 @@ class _ChatViewState extends State<ChatView> {
           if (_isOptionsOpen)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () {},
+              child: TapRegion(
+                groupId: 'options_menu_group',
+                onTapOutside: (event) {
+                  if (_isOptionsOpen) {
+                    setState(() {
+                      _isOptionsOpen = false;
+                      _activeOptionMenu = null;
+                    });
+                  }
+                },
                 child: Container(
-                  width: 280,
+                  width: 290,
                   decoration: BoxDecoration(
                     color: popoverCardBg,
                     borderRadius: BorderRadius.circular(16),
@@ -580,39 +587,42 @@ class _ChatViewState extends State<ChatView> {
               crossAxisAlignment: _isInputMultiLine ? CrossAxisAlignment.end : CrossAxisAlignment.center,
               children: [
                 // '+' Options Button (Round)
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: (_isOptionsOpen ||
-                            provider.recallBudget != 'medium' ||
-                            provider.thinkingEffort != 'medium' ||
-                            provider.verbosity != 'low')
-                        ? (isDark ? const Color(0xFF27272A) : const Color(0xFFE4E4E7))
-                        : (isDark ? const Color(0xFF1C1C1F) : const Color(0xFFEAEAED)),
-                  ),
-                  child: IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    tooltip: 'Configure Recall, Reasoning & Verbosity',
-                    icon: AnimatedRotation(
-                      turns: _isOptionsOpen ? 0.125 : 0.0,
-                      duration: const Duration(milliseconds: 150),
-                      child: Icon(
-                        LucideIcons.plus,
-                        size: 18,
-                        color: textPrimary,
-                      ),
+                TapRegion(
+                  groupId: 'options_menu_group',
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: (_isOptionsOpen ||
+                              provider.recallBudget != 'medium' ||
+                              provider.thinkingEffort != 'medium' ||
+                              provider.verbosity != 'low')
+                          ? (isDark ? const Color(0xFF27272A) : const Color(0xFFE4E4E7))
+                          : (isDark ? const Color(0xFF1C1C1F) : const Color(0xFFEAEAED)),
                     ),
-                    onPressed: () {
-                      setState(() {
-                        _isOptionsOpen = !_isOptionsOpen;
-                        if (!_isOptionsOpen) {
-                          _activeOptionMenu = null;
-                        }
-                      });
-                    },
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      tooltip: 'Configure Effort, Recall & Verbosity',
+                      icon: AnimatedRotation(
+                        turns: _isOptionsOpen ? 0.125 : 0.0,
+                        duration: const Duration(milliseconds: 150),
+                        child: Icon(
+                          LucideIcons.plus,
+                          size: 18,
+                          color: textPrimary,
+                        ),
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isOptionsOpen = !_isOptionsOpen;
+                          if (!_isOptionsOpen) {
+                            _activeOptionMenu = null;
+                          }
+                        });
+                      },
+                    ),
                   ),
                 ),
 
@@ -722,12 +732,11 @@ class _ChatViewState extends State<ChatView> {
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildMenuRow(
-            icon: LucideIcons.zap,
-            title: 'reasoning',
+            title: 'effort',
             value: provider.thinkingEffort,
             onTap: () {
               setState(() {
-                _activeOptionMenu = 'reasoning';
+                _activeOptionMenu = 'effort';
               });
             },
             isDark: isDark,
@@ -738,11 +747,10 @@ class _ChatViewState extends State<ChatView> {
             height: 1,
             thickness: 1,
             color: isDark ? const Color(0xFF27272A) : const Color(0xFFE4E4E7),
-            indent: 34,
-            endIndent: 8,
+            indent: 12,
+            endIndent: 12,
           ),
           _buildMenuRow(
-            icon: LucideIcons.database,
             title: 'recall',
             value: provider.recallBudget,
             onTap: () {
@@ -758,11 +766,10 @@ class _ChatViewState extends State<ChatView> {
             height: 1,
             thickness: 1,
             color: isDark ? const Color(0xFF27272A) : const Color(0xFFE4E4E7),
-            indent: 34,
-            endIndent: 8,
+            indent: 12,
+            endIndent: 12,
           ),
           _buildMenuRow(
-            icon: LucideIcons.slidersHorizontal,
             title: 'verbosity',
             value: provider.verbosity,
             onTap: () {
@@ -780,7 +787,6 @@ class _ChatViewState extends State<ChatView> {
   }
 
   Widget _buildMenuRow({
-    required IconData icon,
     required String title,
     required String value,
     required VoidCallback onTap,
@@ -795,15 +801,13 @@ class _ChatViewState extends State<ChatView> {
         borderRadius: BorderRadius.circular(10),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              Icon(icon, size: 15, color: textMuted),
-              const SizedBox(width: 10),
               Text(
                 title,
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 13.5,
                   fontWeight: FontWeight.w500,
                   color: textPrimary,
                   fontFamily: 'Satoshi',
@@ -819,13 +823,46 @@ class _ChatViewState extends State<ChatView> {
                   fontFamily: 'Satoshi',
                 ),
               ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 16,
-                color: textMuted,
-              ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSegmentedBtn({
+    required String lvl,
+    required String label,
+    required String currentValue,
+    required ValueChanged<String> onChanged,
+    required Color activeBtnBg,
+    required Color textPrimary,
+    required Color textMuted,
+  }) {
+    final isSelected = currentValue == lvl;
+    return Expanded(
+      child: Material(
+        color: isSelected ? activeBtnBg : Colors.transparent,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            onChanged(lvl);
+            setState(() {});
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Center(
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? textPrimary : textMuted,
+                  fontFamily: 'Satoshi',
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -842,24 +879,29 @@ class _ChatViewState extends State<ChatView> {
     Color activeBtnBg,
   ) {
     String title;
-    IconData icon;
     String currentValue;
     ValueChanged<String> onChanged;
     String description;
 
-    if (_activeOptionMenu == 'reasoning') {
-      title = 'Reasoning';
-      icon = LucideIcons.zap;
+    if (_activeOptionMenu == 'effort') {
+      title = 'effort';
       currentValue = provider.thinkingEffort;
       onChanged = (lvl) => provider.setThinkingEffort(lvl);
-      description = currentValue == 'low'
-          ? 'Minimal reasoning for faster, direct responses.'
-          : currentValue == 'high'
-              ? 'Deep reasoning effort for complex logic and coding.'
-              : 'Balanced reasoning for general tasks (default).';
+      if (currentValue == 'none') {
+        description = 'No reasoning effort. Fastest, lowest latency responses.';
+      } else if (currentValue == 'low') {
+        description = 'Minimal reasoning for faster, direct responses.';
+      } else if (currentValue == 'high') {
+        description = 'Deep reasoning effort for complex logic and coding.';
+      } else if (currentValue == 'xhigh') {
+        description = 'Extra high reasoning for complex architecture and analysis.';
+      } else if (currentValue == 'max') {
+        description = 'Maximum reasoning depth for the hardest reasoning problems.';
+      } else {
+        description = 'Balanced reasoning for general tasks (default).';
+      }
     } else if (_activeOptionMenu == 'recall') {
-      title = 'Recall';
-      icon = LucideIcons.database;
+      title = 'recall';
       currentValue = provider.recallBudget;
       onChanged = (lvl) => provider.setRecallBudget(lvl);
       description = currentValue == 'low'
@@ -868,8 +910,7 @@ class _ChatViewState extends State<ChatView> {
               ? 'Deep memory recall across all past conversations.'
               : 'Standard memory recall from Hindsight (default).';
     } else {
-      title = 'Verbosity';
-      icon = LucideIcons.slidersHorizontal;
+      title = 'verbosity';
       currentValue = provider.verbosity;
       onChanged = (lvl) => provider.setVerbosity(lvl);
       description = currentValue == 'high'
@@ -885,7 +926,7 @@ class _ChatViewState extends State<ChatView> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with Back Button
+          // Header with Back Button (no icons)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -901,25 +942,25 @@ class _ChatViewState extends State<ChatView> {
                   },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.chevron_left_rounded, size: 18, color: textPrimary),
-                        const SizedBox(width: 4),
-                        Icon(icon, size: 14, color: textMuted),
-                        const SizedBox(width: 6),
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: textPrimary,
-                            fontFamily: 'Satoshi',
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      'Back',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                        color: textMuted,
+                        fontFamily: 'Satoshi',
+                      ),
                     ),
                   ),
+                ),
+              ),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: textPrimary,
+                  fontFamily: 'Satoshi',
                 ),
               ),
               Text(
@@ -936,47 +977,122 @@ class _ChatViewState extends State<ChatView> {
 
           const SizedBox(height: 10),
 
-          // Previous Design Segmented Bar
-          Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: toggleContainerBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              children: ['low', 'medium', 'high'].map((lvl) {
-                final isSelected = currentValue == lvl;
-                final label = lvl == 'low' ? 'Low' : lvl == 'medium' ? 'Med' : 'High';
-                return Expanded(
-                  child: Material(
-                    color: isSelected ? activeBtnBg : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () {
-                        onChanged(lvl);
-                        setState(() {});
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Center(
-                          child: Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                              color: isSelected ? textPrimary : textMuted,
-                              fontFamily: 'Satoshi',
-                            ),
-                          ),
-                        ),
+          // Options Segmented Bar
+          if (_activeOptionMenu == 'effort') ...[
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: toggleContainerBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      _buildSegmentedBtn(
+                        lvl: 'none',
+                        label: 'None',
+                        currentValue: currentValue,
+                        onChanged: onChanged,
+                        activeBtnBg: activeBtnBg,
+                        textPrimary: textPrimary,
+                        textMuted: textMuted,
                       ),
-                    ),
+                      _buildSegmentedBtn(
+                        lvl: 'low',
+                        label: 'Low',
+                        currentValue: currentValue,
+                        onChanged: onChanged,
+                        activeBtnBg: activeBtnBg,
+                        textPrimary: textPrimary,
+                        textMuted: textMuted,
+                      ),
+                      _buildSegmentedBtn(
+                        lvl: 'medium',
+                        label: 'Med',
+                        currentValue: currentValue,
+                        onChanged: onChanged,
+                        activeBtnBg: activeBtnBg,
+                        textPrimary: textPrimary,
+                        textMuted: textMuted,
+                      ),
+                    ],
                   ),
-                );
-              }).toList(),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      _buildSegmentedBtn(
+                        lvl: 'high',
+                        label: 'High',
+                        currentValue: currentValue,
+                        onChanged: onChanged,
+                        activeBtnBg: activeBtnBg,
+                        textPrimary: textPrimary,
+                        textMuted: textMuted,
+                      ),
+                      _buildSegmentedBtn(
+                        lvl: 'xhigh',
+                        label: 'XHigh',
+                        currentValue: currentValue,
+                        onChanged: onChanged,
+                        activeBtnBg: activeBtnBg,
+                        textPrimary: textPrimary,
+                        textMuted: textMuted,
+                      ),
+                      _buildSegmentedBtn(
+                        lvl: 'max',
+                        label: 'Max',
+                        currentValue: currentValue,
+                        onChanged: onChanged,
+                        activeBtnBg: activeBtnBg,
+                        textPrimary: textPrimary,
+                        textMuted: textMuted,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                color: toggleContainerBg,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  _buildSegmentedBtn(
+                    lvl: 'low',
+                    label: 'Low',
+                    currentValue: currentValue,
+                    onChanged: onChanged,
+                    activeBtnBg: activeBtnBg,
+                    textPrimary: textPrimary,
+                    textMuted: textMuted,
+                  ),
+                  _buildSegmentedBtn(
+                    lvl: 'medium',
+                    label: 'Med',
+                    currentValue: currentValue,
+                    onChanged: onChanged,
+                    activeBtnBg: activeBtnBg,
+                    textPrimary: textPrimary,
+                    textMuted: textMuted,
+                  ),
+                  _buildSegmentedBtn(
+                    lvl: 'high',
+                    label: 'High',
+                    currentValue: currentValue,
+                    onChanged: onChanged,
+                    activeBtnBg: activeBtnBg,
+                    textPrimary: textPrimary,
+                    textMuted: textMuted,
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           const SizedBox(height: 8),
 

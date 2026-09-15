@@ -175,6 +175,11 @@ class ChatProvider extends ChangeNotifier {
   Future<void> editAndResendPrompt(int index, String newText) async {
     if (_isGenerating) return;
     if (index >= 0 && index < _messages.length) {
+      final targetMessage = _messages[index];
+      final currentSessionId = _currentSession?.id;
+      if (currentSessionId != null) {
+        await _api.truncateMessagesFrom(currentSessionId, targetMessage.id);
+      }
       _messages = _messages.sublist(0, index);
       notifyListeners();
       await sendMessage(newText);
@@ -183,13 +188,20 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> regenerateLastAssistant() async {
     if (_isGenerating || _messages.isEmpty) return;
+    final currentSessionId = _currentSession?.id;
     if (_messages.last.role == 'assistant') {
-      _messages.removeLast();
+      final lastAssistant = _messages.removeLast();
+      if (currentSessionId != null) {
+        await _api.truncateMessagesFrom(currentSessionId, lastAssistant.id);
+      }
     }
     if (_messages.isNotEmpty && _messages.last.role == 'user') {
-      final lastUserText = _messages.removeLast().content;
+      final lastUser = _messages.removeLast();
+      if (currentSessionId != null) {
+        await _api.truncateMessagesFrom(currentSessionId, lastUser.id);
+      }
       notifyListeners();
-      await sendMessage(lastUserText);
+      await sendMessage(lastUser.content);
     }
   }
 

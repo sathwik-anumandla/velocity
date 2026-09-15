@@ -165,13 +165,21 @@ class ResponsesRunner:
                 }
                 if tools:
                     req_kwargs["tools"] = tools
-                if thinking_effort in ("low", "medium", "high"):
+                if thinking_effort in ("none", "low", "medium", "high", "xhigh", "max"):
                     req_kwargs["reasoning"] = {"effort": thinking_effort}
                 if verbosity in ("low", "medium", "high"):
                     req_kwargs["text"] = {"verbosity": verbosity}
 
-                logger.info(f"Invoking Responses API with model='{self.model}' (reasoning='{thinking_effort}', verbosity='{verbosity}', tools={[t['name'] for t in tools]})")
-                return self.client.responses.create(**req_kwargs)
+                logger.info(f"Invoking Responses API with model='{self.model}' (effort='{thinking_effort}', verbosity='{verbosity}', tools={[t['name'] for t in tools]})")
+                try:
+                    return self.client.responses.create(**req_kwargs)
+                except Exception as err:
+                    # If the model does not support 'max', gracefully fallback to 'xhigh'
+                    if ("reasoning.effort" in str(err) or "unsupported_value" in str(err)) and req_kwargs.get("reasoning", {}).get("effort") == "max":
+                        logger.info(f"Model '{self.model}' does not support effort='max', falling back to 'xhigh'")
+                        req_kwargs["reasoning"] = {"effort": "xhigh"}
+                        return self.client.responses.create(**req_kwargs)
+                    raise err
 
             try:
                 stream_obj = await loop.run_in_executor(None, make_stream)

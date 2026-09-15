@@ -29,6 +29,7 @@ from backend.database import (
     delete_session as db_delete_session,
     add_message as db_add_message,
     get_messages as db_get_messages,
+    truncate_messages_from as db_truncate_messages_from,
     search_messages as db_search_messages,
 )
 from backend.schemas import (
@@ -274,6 +275,27 @@ async def delete_session(session_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"status": "deleted", "session_id": session_id}
+
+
+@app.delete("/sessions/{session_id}/messages")
+async def truncate_session_messages(
+    session_id: str,
+    from_message_id: str = Query(..., description="Message ID to truncate from"),
+):
+    """
+    Truncates a session from a given message ID onward (deleting it and all subsequent messages).
+    Handles both persistent SQLite sessions and ephemeral temporary sessions.
+    """
+    if session_id in temp_sessions:
+        msgs = temp_sessions[session_id].get("messages", [])
+        idx = next((i for i, m in enumerate(msgs) if m.get("id") == from_message_id), None)
+        if idx is not None:
+            temp_sessions[session_id]["messages"] = msgs[:idx]
+            return {"status": "truncated", "deleted": len(msgs) - idx}
+        return {"status": "truncated", "deleted": 0}
+
+    deleted_count = db_truncate_messages_from(session_id, from_message_id)
+    return {"status": "truncated", "deleted": deleted_count}
 
 
 # ==============================================================================
