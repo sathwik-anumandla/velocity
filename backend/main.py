@@ -141,6 +141,19 @@ app.add_middleware(
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 
+
+class NoCacheStaticFiles(StaticFiles):
+    def is_not_modified(self, response_headers, request_headers) -> bool:
+        return False
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
+
+
 for candidate_path in [
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "build", "web"),
     "/app/app/build/web",
@@ -150,8 +163,8 @@ for candidate_path in [
     "./frontend/dist",
 ]:
     if os.path.exists(candidate_path):
-        app.mount("/ui", StaticFiles(directory=candidate_path, html=True), name="ui")
-        logger.info(f"Mounted Web UI from {candidate_path} at /ui")
+        app.mount("/ui", NoCacheStaticFiles(directory=candidate_path, html=True), name="ui")
+        logger.info(f"Mounted Web UI from {candidate_path} at /ui (no-cache enabled)")
         break
 
 
