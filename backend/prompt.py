@@ -248,12 +248,14 @@ def compose_responses_input(
     if verbosity == "low":
         instructions += (
             "\n\n[Verbosity Directive]: Respond with Low / Concise verbosity. "
-            "Be direct, punchy, and eliminate conversational filler, fluff, or excessive preamble."
+            "Be direct, punchy, and eliminate conversational filler, fluff, or excessive preamble. "
+            "Keep the response in a compact, natural paragraph rather than a bulleted list."
         )
     elif verbosity == "high":
         instructions += (
             "\n\n[Verbosity Directive]: Respond with High / Detailed verbosity. "
-            "Provide in-depth explanations, thorough background context, edge cases, and complete examples."
+            "Provide in-depth explanations, thorough background context, edge cases, and complete examples, "
+            "maintaining natural conversational paragraphs."
         )
 
     # Inject persistent hot mental models into instructions
