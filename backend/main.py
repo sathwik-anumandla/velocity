@@ -363,6 +363,8 @@ async def chat_stream(request: ChatRequest):
     renamed_title = None
     if not is_temp and (len(history_messages) == 0 or session["name"].startswith("Session ") or session["name"] in ["New Chat", "New Conversation"]):
         renamed_title = await asyncio.to_thread(classify_and_rename_session, user_message, session_id)
+        if renamed_title and session:
+            session["name"] = renamed_title
 
     # Step 2: Recall from Hindsight (Unconditional, pure retrieval)
     recalled_memories, recall_status = await asyncio.to_thread(
@@ -446,7 +448,7 @@ async def chat_stream(request: ChatRequest):
 
         # Step 4: Retain after exchange using structured format, stable document_id & TEMPR tags
         if not is_temp:
-            session_title = session.get("name") if session else (renamed_title or "New Chat")
+            session_title = renamed_title or (session.get("name") if session else "New Chat")
             retain_status = await asyncio.to_thread(
                 hindsight_client.retain_turn,
                 user_message=user_message,
