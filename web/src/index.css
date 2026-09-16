@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #000000;
+    --card-primary: #141414;
+    --popover-bg: #1E1E22;
+    --border-color: #27272A;
+    --text-primary: #FFFFFF;
+    --text-muted: #A1A1AA;
+  }
+
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: 'Satoshi', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  /* Custom subtle scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #27272a;
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3f3f46;
+  }
+}
+
+/* Markdown styling inside assistant bubble */
+.prose-velocity {
+  line-height: 1.65;
+  font-size: 0.95rem;
+}
+
+.prose-velocity p {
+  margin-top: 0.65rem;
+  margin-bottom: 0.65rem;
+}
+
+.prose-velocity p:first-child {
+  margin-top: 0;
+}
+
+.prose-velocity p:last-child {
+  margin-bottom: 0;
+}
+
+.prose-velocity h1,
+.prose-velocity h2,
+.prose-velocity h3,
+.prose-velocity h4 {
+  color: #ffffff;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose-velocity ul,
+.prose-velocity ol {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.25rem;
+}
+
+.prose-velocity li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.prose-velocity code:not(pre code) {
+  background-color: #27272a;
+  color: #e4e4e7;
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.25rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+}
+
+.prose-velocity pre {
+  margin-top: 0.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  border: 1px solid #27272a;
+  background-color: #0d0d0d;
+}
+
+.prose-velocity pre code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  padding: 0.85rem;
+  display: block;
+}
+
+.prose-velocity a {
+  color: #60a5fa;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose-velocity blockquote {
+  border-left: 3px solid #3f3f46;
+  padding-left: 0.75rem;
+  color: #a1a1aa;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}

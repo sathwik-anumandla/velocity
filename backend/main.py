@@ -155,12 +155,9 @@ class NoCacheStaticFiles(StaticFiles):
 
 
 for candidate_path in [
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "build", "web"),
-    "/app/app/build/web",
-    "./app/build/web",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist"),
-    "/app/frontend/dist",
-    "./frontend/dist",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "dist"),
+    "/app/web/dist",
+    "./web/dist",
 ]:
     if os.path.exists(candidate_path):
         app.mount("/ui", NoCacheStaticFiles(directory=candidate_path, html=True), name="ui")
