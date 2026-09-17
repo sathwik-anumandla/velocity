@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import type { FC } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Pencil, Copy, Check, RotateCcw } from 'lucide-react';
@@ -12,7 +13,7 @@ interface ChatMessageViewProps {
   isLastAssistant?: boolean;
 }
 
-export const ChatMessageView: React.FC<ChatMessageViewProps> = ({
+export const ChatMessageView: FC<ChatMessageViewProps> = ({
   message,
   onEditAndResend,
   onRegenerateLast,
@@ -42,7 +43,7 @@ export const ChatMessageView: React.FC<ChatMessageViewProps> = ({
   if (isUser) {
     return (
       <div className="flex flex-col items-end mb-6 group">
-        <div className="max-w-[85%] sm:max-w-[75%] rounded-3xl bg-[#1C1C1F] border border-[#2A2A30] px-4 py-3 text-white">
+        <div className="max-w-[85%] sm:max-w-[75%] rounded-[20px] bg-[#141414] px-4 py-2.5 text-white">
           {isEditing ? (
             <div className="flex flex-col gap-2 min-w-[280px] sm:min-w-[400px]">
               <textarea
@@ -58,7 +59,7 @@ export const ChatMessageView: React.FC<ChatMessageViewProps> = ({
                     setEditText(message.content);
                   }
                 }}
-                className="w-full p-2 text-sm bg-[#121214] border border-[#3A3A42] rounded-xl text-white outline-none resize-none focus:border-zinc-400"
+                className="w-full p-2 text-sm bg-[#121214] border border-[#27272A] rounded-xl text-white outline-none resize-none focus:border-zinc-400"
                 rows={Math.min(6, Math.max(2, editText.split('\n').length))}
                 autoFocus
               />
@@ -87,9 +88,17 @@ export const ChatMessageView: React.FC<ChatMessageViewProps> = ({
           )}
         </div>
 
-        {/* User action buttons: edit & copy */}
+        {/* User prompt action buttons: copy & edit, visible ONLY when hovered on prompt area */}
         {!isEditing && (
-          <div className="flex items-center gap-1 mt-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1.5 mt-1 mr-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              type="button"
+              onClick={handleCopy}
+              title="Copy prompt"
+              className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-[#141414] transition-colors"
+            >
+              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -97,17 +106,9 @@ export const ChatMessageView: React.FC<ChatMessageViewProps> = ({
                 setIsEditing(true);
               }}
               title="Edit prompt"
-              className="p-1 rounded text-zinc-400 hover:text-white hover:bg-[#202024] transition-colors"
+              className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-[#141414] transition-colors"
             >
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleCopy}
-              title="Copy message"
-              className="p-1 rounded text-zinc-400 hover:text-white hover:bg-[#202024] transition-colors"
-            >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <Pencil className="w-4 h-4" />
             </button>
           </div>
         )}
@@ -168,17 +169,16 @@ export const ChatMessageView: React.FC<ChatMessageViewProps> = ({
         ) : null}
       </div>
 
-      {/* 5. Bottom Message Actions: Copy, Regenerate */}
+      {/* 5. Bottom Message Actions: Copy, Regenerate — ALWAYS VISIBLE */}
       {!message.isStreaming && message.content && (
-        <div className="flex items-center gap-2 mt-2 pt-1 opacity-0 group-hover:opacity-100 transition-opacity text-xs text-zinc-400">
+        <div className="flex items-center gap-1.5 mt-2 text-zinc-500">
           <button
             type="button"
             onClick={handleCopy}
-            title="Copy message"
-            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[#1A1A20] hover:text-white transition-colors"
+            title="Copy response"
+            className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-[#141414] transition-colors"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copied ? 'Copied' : 'Copy'}</span>
+            {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
           </button>
 
           {isLastAssistant && onRegenerateLast && (
@@ -186,16 +186,15 @@ export const ChatMessageView: React.FC<ChatMessageViewProps> = ({
               type="button"
               onClick={onRegenerateLast}
               title="Regenerate response"
-              className="flex items-center gap-1 px-2 py-1 rounded hover:bg-[#1A1A20] hover:text-white transition-colors"
+              className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-[#141414] transition-colors"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Regenerate</span>
+              <RotateCcw className="w-4 h-4" />
             </button>
           )}
 
           {message.memory_status && (
             <span
-              className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded border ${
+              className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded border ml-2 ${
                 message.memory_status === 'ok'
                   ? 'border-emerald-500/20 text-emerald-400/80 bg-emerald-500/5'
                   : 'border-amber-500/20 text-amber-400/80 bg-amber-500/5'

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, ArrowUp, Square, PanelLeftOpen, PanelLeftClose } from 'lucide-react';
+import { Plus, ArrowUp, Square, PanelLeft, Ghost } from 'lucide-react';
 import type { Session, ChatMessage, ThinkingEffort, RecallBudget, Verbosity } from './types';
 import * as api from './api';
 import { Sidebar } from './components/Sidebar';
@@ -448,33 +448,49 @@ export function App() {
           onToggleTemporary={setIsTemporary}
           isBackendOnline={isBackendOnline}
           onSearch={api.searchMessages}
+          onCloseSidebar={() => setSidebarOpen(false)}
         />
       )}
 
       {/* 2. Main Chat Area */}
       <main className="flex-1 flex flex-col h-full min-w-0 relative bg-black">
-        {/* Top Minimal Bar */}
-        <header className="h-12 border-b border-[#1C1C20] flex items-center justify-between px-4 flex-shrink-0 select-none">
+        {/* Top Minimal Header: Pure clean canvas matching screenshot */}
+        <header className="h-12 flex items-center justify-between px-6 flex-shrink-0 select-none">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-[#18181C] transition-colors"
-              title={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-            >
-              {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
-            </button>
-            <span className="text-xs font-medium text-zinc-300 truncate max-w-sm sm:max-w-md">
-              {sessions.find((s) => s.id === currentSessionId)?.name || 'New Chat'}
-            </span>
+            {!sidebarOpen && (
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-[#141414] transition-colors"
+                title="Open sidebar"
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
-          <div className="flex items-center gap-2">
-            {isTemporary && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                Incognito
-              </span>
-            )}
+          <div className="flex items-center gap-3">
+            {/* Status Dot */}
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isBackendOnline ? 'bg-amber-500 shadow-sm shadow-amber-500/50' : 'bg-rose-500 animate-pulse'
+              }`}
+              title={isBackendOnline ? 'Hindsight & Velocity Online' : 'Backend Offline'}
+            />
+
+            {/* Incognito / Ghost toggle */}
+            <button
+              type="button"
+              onClick={() => setIsTemporary(!isTemporary)}
+              title={isTemporary ? 'Incognito Mode Active (No Memory Retain)' : 'Incognito Mode (Click to enable)'}
+              className={`p-1.5 rounded-lg transition-colors ${
+                isTemporary
+                  ? 'text-amber-400 hover:text-amber-300'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#141414]'
+              }`}
+            >
+              <Ghost className="w-4 h-4" />
+            </button>
           </div>
         </header>
 
@@ -523,7 +539,7 @@ export function App() {
             />
 
             {/* Input Capsule */}
-            <div className="flex items-end gap-2.5 p-2 rounded-[28px] bg-[#141414] border border-[#27272E] shadow-2xl focus-within:border-zinc-500 transition-all">
+            <div className="flex items-center gap-2.5 px-3 py-2 rounded-full bg-[#141414] border border-[#27272A] shadow-2xl focus-within:border-zinc-500 transition-all">
               {/* '+' Options Button */}
               <button
                 id="options-toggle-btn"
@@ -533,7 +549,7 @@ export function App() {
                 className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
                   isOptionsHighlighted
                     ? 'bg-[#27272A] text-white'
-                    : 'bg-[#1C1C1F] text-zinc-300 hover:text-white hover:bg-[#25252A]'
+                    : 'bg-[#27272A] text-zinc-300 hover:text-white hover:bg-[#343438]'
                 }`}
               >
                 <Plus
@@ -560,7 +576,7 @@ export function App() {
                 }}
                 placeholder="Message Velocity..."
                 rows={1}
-                className="flex-1 bg-transparent text-[15px] font-medium text-white placeholder-zinc-500 outline-none resize-none py-1.5 px-1 leading-snug max-h-40"
+                className="flex-1 bg-transparent text-[15px] font-medium text-white placeholder-zinc-500 outline-none resize-none py-1 px-1 leading-snug max-h-40"
               />
 
               {/* Send or Stop Generation Button */}
@@ -582,7 +598,7 @@ export function App() {
                   className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
                     inputValue.trim()
                       ? 'bg-white text-black hover:bg-zinc-200'
-                      : 'bg-[#222226] text-zinc-600 cursor-not-allowed'
+                      : 'bg-[#27272A] text-zinc-500 cursor-not-allowed'
                   }`}
                 >
                   <ArrowUp className="w-4 h-4" />
