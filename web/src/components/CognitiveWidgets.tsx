@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FC } from 'react';
 import { ChevronDown, ChevronRight, Copy, Check, Sparkles, Globe, Database, Brain, Cpu, Terminal } from 'lucide-react';
 import type { ToolCallState, AgenticStep } from '../types';
+import { highlightCode } from '../utils/prism';
 
 export const AgenticWorkflowStepper: FC<{ step?: AgenticStep; isStreaming?: boolean }> = ({
   step,
@@ -25,10 +26,10 @@ export const AgenticWorkflowStepper: FC<{ step?: AgenticStep; isStreaming?: bool
   };
 
   return (
-    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#141414] text-xs text-zinc-300 font-mono mb-2">
+    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[var(--bg-card)] text-xs text-[var(--text-secondary)] font-mono mb-2">
       {getStepIcon(step?.step)}
-      <span className="capitalize font-semibold text-zinc-200">{step?.step || 'Thinking'}</span>
-      {step?.message && <span className="text-zinc-500 text-[11px]">— {step.message}</span>}
+      <span className="capitalize font-semibold text-[var(--text-primary)]">{step?.step || 'Thinking'}</span>
+      {step?.message && <span className="text-[var(--text-muted)] text-[11px]">— {step.message}</span>}
       {isStreaming && <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-pulse ml-0.5" />}
     </div>
   );
@@ -43,25 +44,25 @@ export const ReasoningBlock: FC<{ reasoning: string; isStreaming?: boolean }> = 
   if (!reasoning.trim()) return null;
 
   return (
-    <div className="mb-3 rounded-xl bg-[#141414] overflow-hidden text-xs">
+    <div className="mb-3 rounded-xl bg-[var(--bg-card)] overflow-hidden text-xs">
       <button
         type="button"
         onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between w-full px-3.5 py-2.5 text-zinc-400 hover:text-zinc-200 hover:bg-[#1A1A1E] transition-colors"
+        className="flex items-center justify-between w-full px-3.5 py-2.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
       >
         <div className="flex items-center gap-2 font-mono">
-          <Cpu className="w-3.5 h-3.5 text-zinc-500" />
+          <Cpu className="w-3.5 h-3.5 text-[var(--text-dim)]" />
           <span>Thought process</span>
           {isStreaming && <span className="inline-block w-1.5 h-1.5 rounded-full bg-zinc-400 animate-ping ml-1" />}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-zinc-500">{reasoning.length} chars</span>
-          {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-zinc-500" /> : <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />}
+          <span className="text-[11px] text-[var(--text-dim)]">{reasoning.length} chars</span>
+          {isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-[var(--text-dim)]" /> : <ChevronRight className="w-3.5 h-3.5 text-[var(--text-dim)]" />}
         </div>
       </button>
 
       {isExpanded && (
-        <div className="px-3.5 py-3 bg-[#0A0A0A] text-zinc-300 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto">
+        <div className="px-3.5 py-3 bg-[var(--bg-modal-inner)] text-[var(--text-secondary)] font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto">
           {reasoning}
         </div>
       )}
@@ -99,34 +100,34 @@ export const ToolCallCard: FC<{ toolCall: ToolCallState }> = ({ toolCall }) => {
   };
 
   return (
-    <div className="my-1.5 rounded-xl bg-[#141414] text-xs font-mono overflow-hidden">
+    <div className="my-1.5 rounded-xl bg-[var(--bg-card)] text-xs font-mono overflow-hidden">
       <div
         onClick={() => toolCall.result && setIsExpanded(!isExpanded)}
-        className={`flex items-center justify-between px-3.5 py-2.5 cursor-pointer hover:bg-[#1A1A1E] transition-colors ${
+        className={`flex items-center justify-between px-3.5 py-2.5 cursor-pointer hover:bg-[var(--bg-card-hover)] transition-colors ${
           !toolCall.result ? 'cursor-default' : ''
         }`}
       >
         <div className="flex items-center gap-2">
           {getIcon()}
-          <span className="font-semibold text-zinc-200">{cleanToolName()}</span>
+          <span className="font-semibold text-[var(--text-primary)]">{cleanToolName()}</span>
           {toolCall.query && (
-            <span className="text-zinc-500 text-[11px] truncate max-w-xs sm:max-w-md">"{toolCall.query}"</span>
+            <span className="text-[var(--text-muted)] text-[11px] truncate max-w-xs sm:max-w-md">"{toolCall.query}"</span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {toolCall.status === 'running' ? (
             <span className="inline-block w-2 h-2 rounded-full bg-zinc-400 animate-pulse" />
           ) : (
-            <span className="text-[10px] uppercase tracking-wider text-zinc-400 font-bold">Done</span>
+            <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] font-bold">Done</span>
           )}
           {toolCall.result && (
-            isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-zinc-500" /> : <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
+            isExpanded ? <ChevronDown className="w-3.5 h-3.5 text-[var(--text-dim)]" /> : <ChevronRight className="w-3.5 h-3.5 text-[var(--text-dim)]" />
           )}
         </div>
       </div>
 
       {isExpanded && toolCall.result && (
-        <div className="px-3.5 py-3 bg-[#0A0A0A] text-[11px] text-zinc-300 whitespace-pre-wrap max-h-48 overflow-y-auto">
+        <div className="px-3.5 py-3 bg-[var(--bg-modal-inner)] text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap max-h-48 overflow-y-auto">
           {toolCall.result}
         </div>
       )}
@@ -143,30 +144,29 @@ export const CodeBlock: FC<{ language?: string; value: string }> = ({ language, 
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const highlightedHtml = highlightCode(value, language);
+
   return (
-    <div className="relative my-3 rounded-xl bg-[#0D0D10] overflow-hidden text-xs">
-      <div className="flex items-center justify-between px-3.5 py-2 bg-[#141418] text-zinc-400 font-mono text-[11px]">
-        <span>{language || 'text'}</span>
+    <div className="relative my-3 rounded-xl bg-[var(--bg-code)] overflow-hidden text-xs">
+      {/* Header: plain language text on top-left (no bg highlight) and ONLY copy icon on top-right */}
+      <div className="flex items-center justify-between px-3.5 pt-2.5 pb-1 select-none">
+        <span className="text-[var(--text-dim)] font-mono text-[11px] lowercase tracking-wide">
+          {language || 'code'}
+        </span>
         <button
           type="button"
           onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-[#202026] text-zinc-300 hover:text-white transition-colors"
+          title={copied ? 'Copied to clipboard' : 'Copy code'}
+          className="p-1 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
         >
-          {copied ? (
-            <>
-              <Check className="w-3 h-3 text-white" />
-              <span className="text-white">Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3 h-3" />
-              <span>Copy</span>
-            </>
-          )}
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
       </div>
-      <pre className="p-3.5 overflow-x-auto text-zinc-200 font-mono text-[12px] leading-relaxed">
-        <code>{value}</code>
+      <pre className="p-3.5 pt-1 overflow-x-auto font-mono text-[12.5px] leading-relaxed">
+        <code
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+          className="font-mono"
+        />
       </pre>
     </div>
   );

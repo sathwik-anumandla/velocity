@@ -5,6 +5,7 @@ import * as api from './api';
 import { Sidebar } from './components/Sidebar';
 import { OptionsMenu } from './components/OptionsMenu';
 import { ChatMessageView } from './components/ChatMessageView';
+import { SearchModal } from './components/SearchModal';
 
 export function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -14,6 +15,7 @@ export function App() {
   const [isBackendOnline, setIsBackendOnline] = useState(true);
   const [isTemporary, setIsTemporary] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   // Dark/Light Theme state
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -101,17 +103,44 @@ export function App() {
     setCurrentSessionId(null);
     setMessages([]);
     setIsTemporary(false);
-    textareaRef.current?.focus();
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 50);
   }, [isStreaming]);
 
-  // Keyboard shortcut: Cmd+Shift+O for New Chat
+  // Global keyboard shortcuts: ⌘K (Search), ⌘⇧O (New Chat), ⌘B (Sidebar toggle), Esc (Dismiss)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'o') {
+      const isMeta = e.metaKey || e.ctrlKey;
+
+      // 1. Cmd/Ctrl + K: Search
+      if (isMeta && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+        return;
+      }
+
+      // 2. Cmd/Ctrl + Shift + O: New Chat
+      if (isMeta && e.shiftKey && e.key.toLowerCase() === 'o') {
         e.preventDefault();
         handleNewChat();
+        return;
+      }
+
+      // 3. Cmd/Ctrl + B: Toggle Sidebar
+      if (isMeta && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setSidebarOpen((prev) => !prev);
+        return;
+      }
+
+      // 4. Escape: Close search modal or options popover
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+        setIsOptionsOpen(false);
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleNewChat]);
@@ -423,14 +452,13 @@ export function App() {
     handleSendMessage(newContent);
   };
 
-  // Regenerate assistant response (works on ANY assistant response in the conversation)
+  // Regenerate assistant response
   const handleRegenerate = async (asstMessageId: string) => {
     if (!currentSessionId || isStreaming || messages.length === 0) return;
 
     const asstIdx = messages.findIndex((m) => m.id === asstMessageId);
     if (asstIdx === -1) return;
 
-    // Find the user message directly preceding this assistant response
     let userIdx = -1;
     for (let i = asstIdx - 1; i >= 0; i--) {
       if (messages[i].role === 'user') {
@@ -460,8 +488,93 @@ export function App() {
     recallBudget !== 'medium' ||
     verbosity !== 'low';
 
+  // Render Input Capsule (reused in centered Claude/ChatGPT/Gemini mode and bottom-docked mode)
+  const renderInputCapsule = (isCentered: boolean = false) => (
+    <div className={`relative w-full ${isCentered ? 'max-w-2xl sm:max-w-3xl' : 'max-w-3xl'}`}>
+      {/* Options Menu Popover directly anchored above the '+' button */}
+      <OptionsMenu
+        isOpen={isOptionsOpen}
+        onClose={() => setIsOptionsOpen(false)}
+        thinkingEffort={thinkingEffort}
+        recallBudget={recallBudget}
+        verbosity={verbosity}
+        onUpdateEffort={handleUpdateEffort}
+        onUpdateRecall={handleUpdateRecall}
+        onUpdateVerbosity={handleUpdateVerbosity}
+      />
+
+      {/* Input Capsule (Flat, NO borders) */}
+      <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-[26px] bg-[var(--bg-input)] shadow-2xl transition-all">
+        {/* '+' Options Button */}
+        <button
+          id="options-toggle-btn"
+          type="button"
+          onClick={() => setIsOptionsOpen(!isOptionsOpen)}
+          title="Configure Effort, Recall & Verbosity"
+          className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+            isOptionsHighlighted
+              ? 'bg-[var(--bg-pill-hover)] text-[var(--text-primary)]'
+              : 'bg-[var(--bg-pill)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-pill-hover)]'
+          }`}
+        >
+          <Plus
+            className={`w-4 h-4 transition-transform duration-150 ${
+              isOptionsOpen ? 'rotate-45' : 'rotate-0'
+            }`}
+          />
+        </button>
+
+        {/* Auto-expanding Input Field */}
+        <textarea
+          ref={textareaRef}
+          value={inputValue}
+          onChange={(e) => {
+            setInputValue(e.target.value);
+            e.target.style.height = 'auto';
+            e.target.style.height = `${Math.min(160, Math.max(24, e.target.scrollHeight))}px`;
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSendMessage();
+            }
+          }}
+          placeholder="Message Velocity..."
+          rows={1}
+          className="flex-1 bg-transparent text-[15px] font-medium text-[var(--text-primary)] placeholder-[var(--text-dim)] outline-none resize-none py-1 px-1 leading-snug max-h-40"
+        />
+
+        {/* Send or Stop Generation Button */}
+        {isStreaming ? (
+          <button
+            type="button"
+            onClick={handleStopStreaming}
+            title="Stop generating"
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-[var(--text-primary)] text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
+          >
+            <Square className="w-3.5 h-3.5 fill-current" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => handleSendMessage()}
+            disabled={!inputValue.trim()}
+            title="Send message"
+            className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+              inputValue.trim()
+                ? 'bg-[var(--text-primary)] text-[var(--bg-primary)] hover:opacity-90'
+                : 'bg-[var(--bg-pill)] text-[var(--text-dim)] cursor-not-allowed'
+            }`}
+          >
+            <ArrowUp className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-black text-white font-sans">
+    <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans">
       {/* 1. Collapsible Sidebar (Flat, no borders) */}
       {sidebarOpen && (
         <Sidebar
@@ -472,7 +585,7 @@ export function App() {
           onDeleteSession={handleDeleteSession}
           onRenameSession={handleRenameSession}
           isBackendOnline={isBackendOnline}
-          onSearch={api.searchMessages}
+          onOpenSearch={() => setIsSearchOpen(true)}
           onCloseSidebar={() => setSidebarOpen(false)}
           theme={theme}
           onToggleTheme={toggleTheme}
@@ -480,7 +593,7 @@ export function App() {
       )}
 
       {/* 2. Main Chat Area */}
-      <main className="flex-1 flex flex-col h-full min-w-0 relative bg-black">
+      <main className="flex-1 flex flex-col h-full min-w-0 relative bg-[var(--bg-primary)]">
         {/* Top Minimal Header: Pure clean canvas, NO borders, NO orange dot */}
         <header className="h-12 flex items-center justify-between px-6 flex-shrink-0 select-none">
           <div className="flex items-center gap-3">
@@ -488,8 +601,8 @@ export function App() {
               <button
                 type="button"
                 onClick={() => setSidebarOpen(true)}
-                className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-[#141414] transition-colors"
-                title="Open sidebar"
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
+                title="Open sidebar (⌘B)"
               >
                 <PanelLeft className="w-4 h-4" />
               </button>
@@ -505,8 +618,8 @@ export function App() {
                 title={isTemporary ? 'Temporary Chat Active (Click to disable)' : 'Enable Temporary Chat (Ephemeral)'}
                 className={`p-2 rounded-xl transition-all ${
                   isTemporary
-                    ? 'bg-[#27272A] text-white shadow-sm'
-                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#141414]'
+                    ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] shadow-sm'
+                    : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
                 }`}
               >
                 <Ghost className="w-4 h-4" />
@@ -515,119 +628,51 @@ export function App() {
           </div>
         </header>
 
-        {/* Chat Scroll Window */}
-        <div
-          ref={chatScrollRef}
-          className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 flex flex-col justify-start"
-        >
-          <div className="w-full max-w-3xl mx-auto flex flex-col flex-1">
-            {messages.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center select-none py-20">
-                <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white mb-2">
-                  Velocity
-                </h1>
-                <p className="text-sm text-zinc-400 max-w-md">
-                  Your personal engineering co-pilot and cognitive second brain. How can I help you think, build, or decide today?
-                </p>
-              </div>
-            ) : (
-              messages.map((msg) => (
-                <ChatMessageView
-                  key={msg.id}
-                  message={msg}
-                  onEditAndResend={handleEditAndResend}
-                  onRegenerate={handleRegenerate}
-                />
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Bottom Floating Input Capsule & Popover */}
-        <div className="p-4 sm:pb-6 sm:px-8 flex-shrink-0 flex justify-center w-full">
-          <div className="relative w-full max-w-3xl">
-            {/* Options Menu Popover directly anchored above the '+' button */}
-            <OptionsMenu
-              isOpen={isOptionsOpen}
-              onClose={() => setIsOptionsOpen(false)}
-              thinkingEffort={thinkingEffort}
-              recallBudget={recallBudget}
-              verbosity={verbosity}
-              onUpdateEffort={handleUpdateEffort}
-              onUpdateRecall={handleUpdateRecall}
-              onUpdateVerbosity={handleUpdateVerbosity}
-            />
-
-            {/* Input Capsule (Flat, NO borders) */}
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-full bg-[#141414] shadow-2xl transition-all">
-              {/* '+' Options Button */}
-              <button
-                id="options-toggle-btn"
-                type="button"
-                onClick={() => setIsOptionsOpen(!isOptionsOpen)}
-                title="Configure Effort, Recall & Verbosity"
-                className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-                  isOptionsHighlighted
-                    ? 'bg-[#27272A] text-white'
-                    : 'bg-[#27272A] text-zinc-300 hover:text-white hover:bg-[#343438]'
-                }`}
-              >
-                <Plus
-                  className={`w-4 h-4 transition-transform duration-150 ${
-                    isOptionsOpen ? 'rotate-45' : 'rotate-0'
-                  }`}
-                />
-              </button>
-
-              {/* Auto-expanding Input Field */}
-              <textarea
-                ref={textareaRef}
-                value={inputValue}
-                onChange={(e) => {
-                  setInputValue(e.target.value);
-                  e.target.style.height = 'auto';
-                  e.target.style.height = `${Math.min(160, Math.max(24, e.target.scrollHeight))}px`;
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-                placeholder="Message Velocity..."
-                rows={1}
-                className="flex-1 bg-transparent text-[15px] font-medium text-white placeholder-zinc-500 outline-none resize-none py-1 px-1 leading-snug max-h-40"
-              />
-
-              {/* Send or Stop Generation Button */}
-              {isStreaming ? (
-                <button
-                  type="button"
-                  onClick={handleStopStreaming}
-                  title="Stop generating"
-                  className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-white hover:bg-zinc-200 text-black transition-colors"
-                >
-                  <Square className="w-3.5 h-3.5 fill-black" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => handleSendMessage()}
-                  disabled={!inputValue.trim()}
-                  title="Send message"
-                  className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-colors ${
-                    inputValue.trim()
-                      ? 'bg-white text-black hover:bg-zinc-200'
-                      : 'bg-[#27272A] text-zinc-500 cursor-not-allowed'
-                  }`}
-                >
-                  <ArrowUp className="w-4 h-4" />
-                </button>
-              )}
+        {/* 3. Claude/ChatGPT/Gemini Centered New Chat View vs. Conversation View */}
+        {messages.length === 0 ? (
+          /* Centered greeting and input bar above middle of screen */
+          <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-8 -translate-y-8 select-none">
+            <div className="w-full max-w-2xl sm:max-w-3xl flex flex-col items-center">
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-8 text-center font-sans">
+                How can I help you today?
+              </h1>
+              {renderInputCapsule(true)}
             </div>
           </div>
-        </div>
+        ) : (
+          /* Conversation View: scrollable messages + docked bottom input capsule */
+          <>
+            <div
+              ref={chatScrollRef}
+              className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 flex flex-col justify-start"
+            >
+              <div className="w-full max-w-3xl mx-auto flex flex-col flex-1">
+                {messages.map((msg) => (
+                  <ChatMessageView
+                    key={msg.id}
+                    message={msg}
+                    onEditAndResend={handleEditAndResend}
+                    onRegenerate={handleRegenerate}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Floating Input Capsule */}
+            <div className="p-4 sm:pb-6 sm:px-8 flex-shrink-0 flex justify-center w-full">
+              {renderInputCapsule(false)}
+            </div>
+          </>
+        )}
       </main>
+
+      {/* Global In-UI Search Modal (Cmd+K) */}
+      <SearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onSelectSession={handleSelectSession}
+        onSearch={api.searchMessages}
+      />
     </div>
   );
 }

@@ -90,7 +90,7 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
   return (
     <div
       ref={popoverRef}
-      className="absolute bottom-full left-0 mb-3 w-72 rounded-2xl bg-[#1E1E22] shadow-2xl shadow-black/80 backdrop-blur-xl p-3 z-50 text-white select-none animate-fade-in"
+      className="absolute bottom-full left-0 mb-3 w-72 rounded-2xl bg-[var(--bg-popover)] shadow-2xl shadow-black/40 backdrop-blur-xl p-3 z-50 text-[var(--text-primary)] select-none animate-fade-in"
     >
       {activeSubMenu === null ? (
         // Main Menu: Pure typography, NO icons
@@ -98,32 +98,32 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
           <button
             type="button"
             onClick={() => setActiveSubMenu('effort')}
-            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-[#2C2C32] transition-colors text-left group"
+            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-[var(--bg-popover-item-hover)] transition-colors text-left group"
           >
-            <span className="text-[13.5px] font-medium text-white group-hover:text-white">effort</span>
-            <span className="text-xs font-mono font-medium text-zinc-400 capitalize">{thinkingEffort}</span>
+            <span className="text-[13.5px] font-medium text-[var(--text-primary)]">effort</span>
+            <span className="text-xs font-mono font-medium text-[var(--text-muted)] capitalize">{thinkingEffort}</span>
           </button>
 
-          <div className="h-[1px] bg-white/5 mx-2" />
+          <div className="h-[1px] bg-zinc-500/10 dark:bg-white/5 mx-2" />
 
           <button
             type="button"
             onClick={() => setActiveSubMenu('recall')}
-            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-[#2C2C32] transition-colors text-left group"
+            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-[var(--bg-popover-item-hover)] transition-colors text-left group"
           >
-            <span className="text-[13.5px] font-medium text-white group-hover:text-white">recall</span>
-            <span className="text-xs font-mono font-medium text-zinc-400 capitalize">{recallBudget}</span>
+            <span className="text-[13.5px] font-medium text-[var(--text-primary)]">recall</span>
+            <span className="text-xs font-mono font-medium text-[var(--text-muted)] capitalize">{recallBudget}</span>
           </button>
 
-          <div className="h-[1px] bg-white/5 mx-2" />
+          <div className="h-[1px] bg-zinc-500/10 dark:bg-white/5 mx-2" />
 
           <button
             type="button"
             onClick={() => setActiveSubMenu('verbosity')}
-            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-[#2C2C32] transition-colors text-left group"
+            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-[var(--bg-popover-item-hover)] transition-colors text-left group"
           >
-            <span className="text-[13.5px] font-medium text-white group-hover:text-white">verbosity</span>
-            <span className="text-xs font-mono font-medium text-zinc-400 capitalize">{verbosity}</span>
+            <span className="text-[13.5px] font-medium text-[var(--text-primary)]">verbosity</span>
+            <span className="text-xs font-mono font-medium text-[var(--text-muted)] capitalize">{verbosity}</span>
           </button>
         </div>
       ) : (
@@ -133,19 +133,19 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
             <button
               type="button"
               onClick={() => setActiveSubMenu(null)}
-              className="text-xs font-medium text-zinc-400 hover:text-white px-1.5 py-1 rounded transition-colors"
+              className="text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] px-1.5 py-1 rounded transition-colors"
             >
               Back
             </button>
-            <span className="text-[13px] font-semibold text-white capitalize">{activeSubMenu}</span>
-            <span className="text-[11px] font-mono font-bold text-zinc-300 uppercase">
+            <span className="text-[13px] font-semibold text-[var(--text-primary)] capitalize">{activeSubMenu}</span>
+            <span className="text-[11px] font-mono font-bold text-[var(--text-secondary)] uppercase">
               {activeSubMenu === 'effort' ? thinkingEffort : activeSubMenu === 'recall' ? recallBudget : verbosity}
             </span>
           </div>
 
           {/* Effort Options: 2 Rows of 3 */}
           {activeSubMenu === 'effort' && (
-            <div className="flex flex-col space-y-1.5 bg-[#141417] p-1 rounded-xl">
+            <div className="flex flex-col space-y-1.5 bg-[var(--bg-modal-inner)] p-1 rounded-xl">
               <div className="grid grid-cols-3 gap-1">
                 {(['none', 'low', 'medium'] as ThinkingEffort[]).map((level) => (
                   <button
@@ -154,8 +154,8 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
                     onClick={() => onUpdateEffort(level)}
                     className={`py-1.5 text-xs font-medium rounded-lg transition-all capitalize ${
                       thinkingEffort === level
-                        ? 'bg-[#2C2C32] text-white font-semibold shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200'
+                        ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] font-semibold shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                     }`}
                   >
                     {level === 'medium' ? 'Med' : level}
@@ -170,8 +170,8 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
                     onClick={() => onUpdateEffort(level)}
                     className={`py-1.5 text-xs font-medium rounded-lg transition-all capitalize ${
                       thinkingEffort === level
-                        ? 'bg-[#2C2C32] text-white font-semibold shadow-sm'
-                        : 'text-zinc-400 hover:text-zinc-200'
+                        ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] font-semibold shadow-sm'
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                     }`}
                   >
                     {level === 'xhigh' ? 'XHigh' : level}
@@ -183,7 +183,7 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
 
           {/* Recall Options */}
           {activeSubMenu === 'recall' && (
-            <div className="grid grid-cols-3 gap-1 bg-[#141417] p-1 rounded-xl">
+            <div className="grid grid-cols-3 gap-1 bg-[var(--bg-modal-inner)] p-1 rounded-xl">
               {(['low', 'medium', 'high'] as RecallBudget[]).map((level) => (
                 <button
                   key={level}
@@ -191,8 +191,8 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
                   onClick={() => onUpdateRecall(level)}
                   className={`py-1.5 text-xs font-medium rounded-lg transition-all capitalize ${
                     recallBudget === level
-                      ? 'bg-[#2C2C32] text-white font-semibold shadow-sm'
-                      : 'text-zinc-400 hover:text-zinc-200'
+                      ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] font-semibold shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   {level === 'medium' ? 'Med' : level}
@@ -203,7 +203,7 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
 
           {/* Verbosity Options */}
           {activeSubMenu === 'verbosity' && (
-            <div className="grid grid-cols-3 gap-1 bg-[#141417] p-1 rounded-xl">
+            <div className="grid grid-cols-3 gap-1 bg-[var(--bg-modal-inner)] p-1 rounded-xl">
               {(['low', 'medium', 'high'] as Verbosity[]).map((level) => (
                 <button
                   key={level}
@@ -211,8 +211,8 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
                   onClick={() => onUpdateVerbosity(level)}
                   className={`py-1.5 text-xs font-medium rounded-lg transition-all capitalize ${
                     verbosity === level
-                      ? 'bg-[#2C2C32] text-white font-semibold shadow-sm'
-                      : 'text-zinc-400 hover:text-zinc-200'
+                      ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] font-semibold shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
                 >
                   {level === 'medium' ? 'Med' : level}
@@ -221,7 +221,7 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
             </div>
           )}
 
-          <p className="mt-2.5 px-1 text-[11.5px] leading-relaxed text-zinc-400 font-sans">
+          <p className="mt-2.5 px-1 text-[11.5px] leading-relaxed text-[var(--text-muted)] font-sans">
             {activeSubMenu === 'effort'
               ? getEffortDescription(thinkingEffort)
               : activeSubMenu === 'recall'

@@ -6,20 +6,48 @@
   :root, html.dark {
     --bg-primary: #000000;
     --bg-sidebar: #0A0A0A;
-    --card-primary: #141414;
-    --popover-bg: #1E1E22;
+    --bg-card: #141414;
+    --bg-card-hover: #1C1C20;
+    --bg-input: #141414;
+    --bg-input-hover: #1C1C1E;
+    --bg-pill: #27272A;
+    --bg-pill-hover: #343438;
+    --bg-popover: #1E1E22;
+    --bg-popover-item-hover: #2C2C32;
+    --bg-modal: #141414;
+    --bg-modal-inner: #0A0A0A;
+    --bg-code: #0D0D10;
+    --bg-code-header: #141418;
     --text-primary: #FFFFFF;
+    --text-secondary: #D4D4D8;
     --text-muted: #A1A1AA;
+    --text-dim: #71717A;
+    --accent-blue: #93C5FD;
+    --accent-blue-bg: rgba(30, 41, 59, 0.7);
     color-scheme: dark;
   }
 
   html.light {
     --bg-primary: #FFFFFF;
     --bg-sidebar: #F7F7F8;
-    --card-primary: #F4F4F5;
-    --popover-bg: #FFFFFF;
+    --bg-card: #F4F4F5;
+    --bg-card-hover: #ECECEE;
+    --bg-input: #F4F4F5;
+    --bg-input-hover: #EAEAEB;
+    --bg-pill: #E4E4E7;
+    --bg-pill-hover: #D4D4D8;
+    --bg-popover: #FFFFFF;
+    --bg-popover-item-hover: #F4F4F5;
+    --bg-modal: #FFFFFF;
+    --bg-modal-inner: #F4F4F5;
+    --bg-code: #F8F8FA;
+    --bg-code-header: #F0F0F3;
     --text-primary: #09090B;
+    --text-secondary: #27272A;
     --text-muted: #71717A;
+    --text-dim: #A1A1AA;
+    --accent-blue: #2563EB;
+    --accent-blue-bg: #EFF6FF;
     color-scheme: light;
   }
 
@@ -31,6 +59,7 @@
     background-color: var(--bg-primary);
     color: var(--text-primary);
     font-family: 'Satoshi', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 500;
   }
 
   /* Custom subtle scrollbar */
@@ -48,18 +77,28 @@
   ::-webkit-scrollbar-thumb:hover {
     background: #3f3f46;
   }
+
+  html.light ::-webkit-scrollbar-thumb {
+    background: #d4d4d8;
+  }
+  html.light ::-webkit-scrollbar-thumb:hover {
+    background: #a1a1aa;
+  }
 }
 
 /* Markdown styling inside assistant bubble */
 .prose-velocity {
   line-height: 1.65;
   font-size: 0.95rem;
-  color: #EDEDED;
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .prose-velocity p {
   margin-top: 0.65rem;
   margin-bottom: 0.65rem;
+  color: var(--text-primary);
+  font-weight: 500;
 }
 
 .prose-velocity p:first-child {
@@ -74,58 +113,167 @@
 .prose-velocity h2,
 .prose-velocity h3,
 .prose-velocity h4 {
-  color: #ffffff;
-  font-weight: 600;
+  color: var(--text-primary);
+  font-weight: 700;
   margin-top: 1.25rem;
   margin-bottom: 0.5rem;
 }
 
-.prose-velocity ul,
+/* Explicit Markdown Lists */
+.prose-velocity ul {
+  list-style-type: disc !important;
+  padding-left: 1.5rem !important;
+  margin-top: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
 .prose-velocity ol {
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
-  padding-left: 1.25rem;
+  list-style-type: decimal !important;
+  padding-left: 1.5rem !important;
+  margin-top: 0.6rem;
+  margin-bottom: 0.6rem;
 }
 
 .prose-velocity li {
   margin-top: 0.25rem;
   margin-bottom: 0.25rem;
+  line-height: 1.6;
+  font-weight: 500;
 }
 
+/* Inline code with accent light blue */
 .prose-velocity code:not(pre code) {
-  background-color: #1a1a1a;
-  color: #e4e4e7;
+  background-color: var(--accent-blue-bg);
+  color: var(--accent-blue);
   padding: 0.15rem 0.35rem;
   border-radius: 0.25rem;
   font-family: 'JetBrains Mono', monospace;
   font-size: 0.85em;
-}
-
-.prose-velocity pre {
-  margin-top: 0.75rem;
-  margin-bottom: 0.75rem;
-  border-radius: 0.75rem;
-  overflow-x: auto;
-  background-color: #0d0d0d;
-}
-
-.prose-velocity pre code {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.85rem;
-  padding: 0.85rem;
-  display: block;
+  font-weight: 500;
 }
 
 .prose-velocity a {
-  color: #e4e4e7;
+  color: var(--accent-blue);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .prose-velocity blockquote {
-  border-left: 2px solid #3f3f46;
+  border-left: 2px solid var(--text-dim);
   padding-left: 0.75rem;
-  color: #a1a1aa;
+  color: var(--text-muted);
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
+}
+
+/* Subtle Syntax Highlighting Tokens (Dark Mode) */
+.dark .token.comment,
+.dark .token.prolog,
+.dark .token.doctype,
+.dark .token.cdata {
+  color: #6e7681;
+  font-style: italic;
+}
+
+.dark .token.punctuation {
+  color: #8b949e;
+}
+
+.dark .token.property,
+.dark .token.tag,
+.dark .token.boolean,
+.dark .token.number,
+.dark .token.constant,
+.dark .token.symbol,
+.dark .token.deleted {
+  color: #79c0ff;
+}
+
+.dark .token.selector,
+.dark .token.attr-name,
+.dark .token.string,
+.dark .token.char,
+.dark .token.builtin,
+.dark .token.inserted {
+  color: #7ee787;
+}
+
+.dark .token.operator,
+.dark .token.entity,
+.dark .token.url,
+.dark .language-css .token.string,
+.dark .style .token.string {
+  color: #c9d1d9;
+}
+
+.dark .token.atrule,
+.dark .token.attr-value,
+.dark .token.keyword {
+  color: #ff7b72;
+}
+
+.dark .token.function,
+.dark .token.class-name {
+  color: #d2a8ff;
+}
+
+.dark .token.regex,
+.dark .token.important,
+.dark .token.variable {
+  color: #ffa657;
+}
+
+/* Subtle Syntax Highlighting Tokens (Light Mode) */
+.light .token.comment,
+.light .token.prolog,
+.light .token.doctype,
+.light .token.cdata {
+  color: #6e7781;
+  font-style: italic;
+}
+
+.light .token.punctuation {
+  color: #57606a;
+}
+
+.light .token.property,
+.light .token.tag,
+.light .token.boolean,
+.light .token.number,
+.light .token.constant,
+.light .token.symbol,
+.light .token.deleted {
+  color: #0550ae;
+}
+
+.light .token.selector,
+.light .token.attr-name,
+.light .token.string,
+.light .token.char,
+.light .token.builtin,
+.light .token.inserted {
+  color: #116329;
+}
+
+.light .token.operator,
+.light .token.entity,
+.light .token.url {
+  color: #24292f;
+}
+
+.light .token.atrule,
+.light .token.attr-value,
+.light .token.keyword {
+  color: #cf222e;
+}
+
+.light .token.function,
+.light .token.class-name {
+  color: #8250df;
+}
+
+.light .token.regex,
+.light .token.important,
+.light .token.variable {
+  color: #953800;
 }
