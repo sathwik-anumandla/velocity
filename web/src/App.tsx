@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, ArrowUp, Square, PanelLeft, Ghost } from 'lucide-react';
+import { Plus, ArrowUp, Square, PanelLeft, Ghost, ArrowDown } from 'lucide-react';
 import type { Session, ChatMessage, ThinkingEffort, RecallBudget, Verbosity } from './types';
 import * as api from './api';
 import { Sidebar } from './components/Sidebar';
 import { OptionsMenu } from './components/OptionsMenu';
 import { ChatMessageView } from './components/ChatMessageView';
 import { SearchModal } from './components/SearchModal';
+import { MemoryInspectorModal } from './components/MemoryInspectorModal';
 
 export function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -16,6 +17,8 @@ export function App() {
   const [isTemporary, setIsTemporary] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false);
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
 
   // Dark/Light Theme state
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -116,6 +119,7 @@ export function App() {
     setCurrentSessionId(null);
     setMessages([]);
     setIsTemporary(false);
+    setIsUserScrolledUp(false);
     setTimeout(() => {
       textareaRef.current?.focus();
     }, 50);
@@ -128,12 +132,13 @@ export function App() {
     setIsTemporary((prev) => !prev);
     setCurrentSessionId(null);
     setMessages([]);
+    setIsUserScrolledUp(false);
     setTimeout(() => {
       textareaRef.current?.focus();
     }, 50);
   }, [isStreaming]);
 
-  // Global keyboard shortcuts: ⌘K (Search), ⌘⇧O (New Chat), ⌘B (Sidebar toggle), Esc (Dismiss)
+  // Global keyboard shortcuts: ⌘K (Search), ⌘⇧O (New Chat), ⌘B (Sidebar toggle), ⌘M (Memory Inspector), Esc (Dismiss)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMeta = e.metaKey || e.ctrlKey;
@@ -159,10 +164,18 @@ export function App() {
         return;
       }
 
-      // 4. Escape: Close search modal or options popover
+      // 4. Cmd/Ctrl + M: Toggle Memory Inspector
+      if (isMeta && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        setIsMemoryInspectorOpen((prev) => !prev);
+        return;
+      }
+
+      // 5. Escape: Close search modal, options popover, or memory inspector
       if (e.key === 'Escape') {
         setIsSearchOpen(false);
         setIsOptionsOpen(false);
+        setIsMemoryInspectorOpen(false);
       }
     };
 
@@ -170,19 +183,32 @@ export function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleNewChat]);
 
-  // Scroll to bottom helper
-  const scrollToBottom = useCallback(() => {
+  // Scroll handler to track when user deliberately scrolls up away from bottom
+  const handleScroll = useCallback(() => {
+    if (!chatScrollRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = chatScrollRef.current;
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    setIsUserScrolledUp(distanceFromBottom > 120);
+  }, []);
+
+  // Scroll to bottom helper (respects user scroll position unless forced)
+  const scrollToBottom = useCallback((force: boolean = false) => {
     if (chatScrollRef.current) {
+      if (!force && isUserScrolledUp) {
+        return;
+      }
       chatScrollRef.current.scrollTo({
         top: chatScrollRef.current.scrollHeight,
         behavior: 'smooth',
       });
     }
-  }, []);
+  }, [isUserScrolledUp]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+    if (!isUserScrolledUp) {
+      scrollToBottom();
+    }
+  }, [messages, isUserScrolledUp, scrollToBottom]);
 
   // Switch session
   const handleSelectSession = async (sessionId: string) => {
@@ -190,6 +216,7 @@ export function App() {
     localStorage.setItem('velocity-active-session', sessionId);
     setCurrentSessionId(sessionId);
     setIsTemporary(false);
+    setIsUserScrolledUp(false);
     const session = sessions.find((s) => s.id === sessionId);
     if (session) {
       setThinkingEffort(session.thinking_effort || 'medium');
@@ -200,6 +227,7 @@ export function App() {
     try {
       const { messages: history } = await api.getSessionMessages(sessionId);
       setMessages(history);
+      setTimeout(() => scrollToBottom(true), 50);
     } catch (err) {
       console.error('Failed to load session messages:', err);
     }
@@ -331,6 +359,8 @@ export function App() {
 
     setMessages((prev) => [...prev, userMsg, asstMsg]);
     setIsStreaming(true);
+    setIsUserScrolledUp(false);
+    setTimeout(() => scrollToBottom(true), 20);
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
@@ -481,6 +511,7 @@ export function App() {
     setMessages(trimmed);
 
     // 3. Send new message turn
+    setIsUserScrolledUp(false);
     handleSendMessage(newContent);
   };
 
@@ -510,6 +541,7 @@ export function App() {
     setMessages(trimmed);
 
     // 3. Re-trigger stream with the user prompt
+    setIsUserScrolledUp(false);
     handleSendMessage(userMsg.content);
   };
 
@@ -621,6 +653,7 @@ export function App() {
           onCloseSidebar={() => setSidebarOpen(false)}
           theme={theme}
           onToggleTheme={toggleTheme}
+          onOpenMemoryInspector={() => setIsMemoryInspectorOpen(true)}
         />
       )}
 
@@ -677,9 +710,10 @@ export function App() {
           </div>
         ) : (
           /* Conversation View: scrollable messages + docked bottom input capsule */
-          <>
+          <div className="relative flex-1 flex flex-col min-h-0">
             <div
               ref={chatScrollRef}
+              onScroll={handleScroll}
               className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 flex flex-col justify-start"
             >
               <div className="w-full max-w-3xl mx-auto flex flex-col flex-1">
@@ -694,11 +728,28 @@ export function App() {
               </div>
             </div>
 
+            {/* Smart Scroll Lock Pill: Minimal floating indicator when scrolled up */}
+            {isUserScrolledUp && (
+              <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 animate-fade-in pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserScrolledUp(false);
+                    scrollToBottom(true);
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--bg-pill)] hover:bg-[var(--bg-pill-hover)] text-[var(--text-primary)] text-xs font-medium shadow-xl backdrop-blur-md transition-all cursor-pointer select-none"
+                >
+                  <ArrowDown className="w-3.5 h-3.5" />
+                  <span>{isStreaming ? 'New messages' : 'Scroll to bottom'}</span>
+                </button>
+              </div>
+            )}
+
             {/* Bottom Floating Input Capsule */}
             <div className="p-4 sm:pb-6 sm:px-8 flex-shrink-0 flex justify-center w-full">
               {renderInputCapsule(false)}
             </div>
-          </>
+          </div>
         )}
       </main>
 
@@ -708,6 +759,13 @@ export function App() {
         onClose={() => setIsSearchOpen(false)}
         onSelectSession={handleSelectSession}
         onSearch={api.searchMessages}
+      />
+
+      {/* Hindsight Memory Inspector Modal (Cmd+M) */}
+      <MemoryInspectorModal
+        isOpen={isMemoryInspectorOpen}
+        onClose={() => setIsMemoryInspectorOpen(false)}
+        isBackendOnline={isBackendOnline}
       />
     </div>
   );

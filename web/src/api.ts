@@ -215,3 +215,34 @@ export async function streamChatTurn(
     handlers.onError(err.message || 'Stream interrupted');
   }
 }
+
+export interface MentalModelItem {
+  id: string;
+  content: string;
+  is_ready: boolean;
+}
+
+export async function getMentalModels(): Promise<MentalModelItem[]> {
+  const res = await fetch(`${API_BASE}/memory/mental-models`);
+  if (!res.ok) throw new Error(`Failed to load mental models: ${res.status}`);
+  const data = await res.json();
+  return data.items || [];
+}
+
+export interface ReflectResponse {
+  query: string;
+  answer: string;
+  citations: any[];
+  status: string;
+}
+
+export async function reflectMemory(query: string, budget: string = 'mid'): Promise<ReflectResponse> {
+  const res = await fetch(`${API_BASE}/memory/reflect`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, budget }),
+  });
+  if (!res.ok) throw new Error(`Reflect failed: ${res.status}`);
+  return res.json();
+}
+

@@ -26,6 +26,7 @@ interface SidebarProps {
   onCloseSidebar?: () => void;
   theme?: 'dark' | 'light';
   onToggleTheme?: () => void;
+  onOpenMemoryInspector?: () => void;
 }
 
 export const Sidebar: FC<SidebarProps> = ({
@@ -40,6 +41,7 @@ export const Sidebar: FC<SidebarProps> = ({
   onCloseSidebar,
   theme = 'dark',
   onToggleTheme,
+  onOpenMemoryInspector,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -231,19 +233,24 @@ export const Sidebar: FC<SidebarProps> = ({
 
         {/* 3. Footer: Hindsight Indicator & Theme Toggle */}
         <div className="p-3.5 flex items-center justify-between bg-[var(--bg-sidebar)]">
-          {/* Glowing Hindsight Pulse Dot + Text */}
-          <div className="flex items-center gap-2 px-1">
+          {/* Glowing Hindsight Pulse Dot + Text (Clickable button) */}
+          <button
+            type="button"
+            onClick={onOpenMemoryInspector}
+            className="flex items-center gap-2 px-2 py-1.5 -ml-1 rounded-lg hover:bg-[var(--bg-card)] transition-colors group cursor-pointer text-left"
+            title="Inspect Hindsight memory (⌘M)"
+          >
             <span
-              className={`w-2 h-2 rounded-full ${
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${
                 isBackendOnline
                   ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50'
                   : 'bg-amber-500 shadow-sm shadow-amber-500/50'
               }`}
             />
-            <span className="text-[12px] font-mono font-medium text-[var(--text-muted)]">
+            <span className="text-[12px] font-mono font-medium text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">
               {isBackendOnline ? 'Hindsight: Ready' : 'Hindsight: Degraded'}
             </span>
-          </div>
+          </button>
 
           {/* Theme Toggle Button */}
           {onToggleTheme && (
