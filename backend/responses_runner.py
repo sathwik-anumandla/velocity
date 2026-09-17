@@ -225,6 +225,10 @@ class ResponsesRunner:
                     if not thinking_emitted:
                         thinking_emitted = True
                         yield {
+                            "event": "status",
+                            "data": json.dumps({"text": "Thinking"}),
+                        }
+                        yield {
                             "event": "thinking",
                             "data": json.dumps({"status": "thinking"}),
                         }
@@ -290,6 +294,10 @@ class ResponsesRunner:
                         query = fn_args_raw
 
                     yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Searching"}),
+                    }
+                    yield {
                         "event": "tool_start",
                         "data": json.dumps({"tool": "tavily_search", "query": f"Searching web: {query}"}),
                     }
@@ -309,6 +317,10 @@ class ResponsesRunner:
                     except Exception:
                         query = fn_args_raw
 
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Consulting memory"}),
+                    }
                     yield {
                         "event": "tool_start",
                         "data": json.dumps({"tool": "consult_memory", "query": f"Consulting memory: {query}"}),
@@ -337,6 +349,10 @@ class ResponsesRunner:
                     except Exception:
                         model_name = fn_args_raw
 
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Fetching mental model"}),
+                    }
                     yield {
                         "event": "tool_start",
                         "data": json.dumps({"tool": "read_mental_model", "query": f"Reading mental model: {model_name}"}),

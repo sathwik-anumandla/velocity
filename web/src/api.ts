@@ -92,6 +92,7 @@ export async function searchMessages(query: string): Promise<SearchResult[]> {
 
 export interface StreamChatHandlers {
   onSessionRenamed?: (newName: string) => void;
+  onStatus?: (text: string) => void;
   onThinking?: () => void;
   onReasoningDelta?: (text: string) => void;
   onAgenticStep?: (step: { step: string; message: string }) => void;
@@ -167,14 +168,25 @@ export async function streamChatTurn(
 
             if (currentEvent === 'session_renamed') {
               handlers.onSessionRenamed?.(data.name);
+            } else if (currentEvent === 'status') {
+              handlers.onStatus?.(data.text || '');
             } else if (currentEvent === 'agentic_step') {
               handlers.onAgenticStep?.(data);
             } else if (currentEvent === 'thinking') {
+              handlers.onStatus?.('Thinking');
               handlers.onThinking?.();
             } else if (currentEvent === 'reasoning_delta') {
               handlers.onReasoningDelta?.(data.text || '');
             } else if (currentEvent === 'tool_start' || currentEvent === 'tool_call') {
-              handlers.onToolStart?.(data.tool || 'tool', data.query || '');
+              const toolName = data.tool || 'tool';
+              if (toolName === 'tavily_search') {
+                handlers.onStatus?.('Searching');
+              } else if (toolName === 'consult_memory') {
+                handlers.onStatus?.('Consulting memory');
+              } else if (toolName === 'read_mental_model') {
+                handlers.onStatus?.('Fetching mental model');
+              }
+              handlers.onToolStart?.(toolName, data.query || '');
             } else if (currentEvent === 'tool_done' || currentEvent === 'tool_result') {
               handlers.onToolDone?.(data.tool || 'tool', data.result || '');
             } else if (currentEvent === 'delta') {

@@ -34,6 +34,7 @@ export interface ChatMessage {
   created_at: string;
   // Dynamic streaming & tool state
   reasoning?: string;
+  statusText?: string;
   isStreaming?: boolean;
   agenticStep?: AgenticStep;
   toolCalls?: ToolCallState[];

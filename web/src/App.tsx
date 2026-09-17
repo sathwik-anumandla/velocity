@@ -297,6 +297,7 @@ export function App() {
       role: 'assistant',
       content: '',
       isStreaming: true,
+      statusText: 'Fetching recall',
       reasoning: '',
       toolCalls: [],
       created_at: new Date().toISOString(),
@@ -323,6 +324,11 @@ export function App() {
           onSessionRenamed: (name) => {
             setSessions((prev) =>
               prev.map((s) => (s.id === targetSessionId ? { ...s, name } : s))
+            );
+          },
+          onStatus: (statusText) => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === asstMsgId ? { ...m, statusText } : m))
             );
           },
           onAgenticStep: (step) => {

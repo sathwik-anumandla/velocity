@@ -277,3 +277,32 @@
 .light .token.variable {
   color: #953800;
 }
+
+/* ChatGPT-Style Flowing Shimmer Text Animation */
+@keyframes text-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--text-dim) 0%,
+    var(--text-dim) 20%,
+    var(--text-primary) 50%,
+    var(--text-dim) 80%,
+    var(--text-dim) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: text-shimmer 2.2s ease-in-out infinite;
+  display: inline-block;
+  will-change: background-position;
+}
+

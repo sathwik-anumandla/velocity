@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Pencil, Copy, Check, RotateCcw } from 'lucide-react';
 import type { ChatMessage } from '../types';
-import { AgenticWorkflowStepper, ReasoningBlock, ToolCallCard, CodeBlock } from './CognitiveWidgets';
+import { CodeBlock } from './CognitiveWidgets';
 
 interface ChatMessageViewProps {
   message: ChatMessage;
@@ -119,28 +119,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
   // Assistant Message
   return (
     <div className="flex flex-col items-start mb-8 group w-full max-w-full">
-      {/* 1. Agentic Workflow Stepper */}
-      {message.agenticStep && (
-        <AgenticWorkflowStepper step={message.agenticStep} isStreaming={message.isStreaming} />
-      )}
-
-      {/* 2. Tool Calls */}
-      {message.toolCalls && message.toolCalls.length > 0 && (
-        <div className="flex flex-col w-full max-w-2xl mb-2">
-          {message.toolCalls.map((tc, idx) => (
-            <ToolCallCard key={idx} toolCall={tc} />
-          ))}
-        </div>
-      )}
-
-      {/* 3. Reasoning / Thought Process Drawer */}
-      {message.reasoning && (
-        <div className="w-full max-w-2xl">
-          <ReasoningBlock reasoning={message.reasoning} isStreaming={message.isStreaming} />
-        </div>
-      )}
-
-      {/* 4. Main Markdown Response Content */}
+      {/* Main Markdown Response Content or Single-Line Flowing Status */}
       <div className="w-full text-[var(--text-primary)] font-medium prose-velocity">
         {message.content ? (
           <ReactMarkdown
@@ -203,9 +182,10 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
             {message.content}
           </ReactMarkdown>
         ) : message.isStreaming ? (
-          <div className="flex items-center gap-2 text-xs font-mono text-[var(--text-muted)] py-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] animate-ping" />
-            <span>Velocity is thinking...</span>
+          <div className="flex items-center py-1.5 select-none">
+            <span className="shimmer-text text-[15px] font-medium tracking-tight">
+              {message.statusText || 'Thinking'}
+            </span>
           </div>
         ) : null}
       </div>

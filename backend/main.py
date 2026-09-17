@@ -398,49 +398,7 @@ async def chat_stream(request: ChatRequest):
         if renamed_title and session:
             session["name"] = renamed_title
 
-    # Step 2: Recall from Hindsight (Unconditional, pure retrieval)
-    recalled_memories, recall_status = await asyncio.to_thread(
-        hindsight_client.recall,
-        query=user_message,
-        budget=recall_budget,
-    )
-    overall_memory_status = recall_status
-
-    # Step 3: Summarization Waterfall & Prompt Composition
-    total_turns = len(history_messages) // 2
-    last_msg_ts = history_messages[-1]["created_at"] if history_messages else None
-
-    # Check if waterfall triggers summarization of older history (>6 messages)
-    if len(history_messages) > 6:
-        should_sum, reason = evaluate_summarization_waterfall(
-            total_turns=total_turns,
-            total_tokens=last_tokens,
-            last_message_timestamp=last_msg_ts,
-            has_unsummarized_tail=True,
-        )
-        if should_sum:
-            logger.info(f"Summarization waterfall triggered: {reason}")
-            to_summarize = history_messages[:-6]
-            new_summary = await asyncio.to_thread(generate_summary, current_summary, to_summarize)
-            if new_summary:
-                current_summary = new_summary
-                if is_temp:
-                    temp_sessions[session_id]["summary"] = new_summary
-                else:
-                    db_update_session(session_id, summary=new_summary)
-
-    # Fetch hot mental models (user-persona & current-context) from cache (< 1ms warm, < 30ms cold)
-    hot_memory = await asyncio.to_thread(hindsight_client.get_hot_context)
-
-    # Compose Responses API input in strict cache-optimal order
-    instructions, input_items = compose_responses_input(
-        messages=history_messages,
-        current_summary=current_summary,
-        recall_memories=recalled_memories,
-        new_user_message=user_message,
-        verbosity=verbosity,
-        hot_memory=hot_memory,
-    )
+    overall_memory_status = "ok"
 
     async def event_generator():
         nonlocal overall_memory_status
@@ -452,6 +410,66 @@ async def chat_stream(request: ChatRequest):
                 "event": "session_renamed",
                 "data": json.dumps({"session_id": session_id, "name": renamed_title})
             }
+
+        # Step 2: Real-time status for Hindsight Recall
+        yield {
+            "event": "status",
+            "data": json.dumps({"text": "Fetching recall"})
+        }
+
+        recalled_memories, recall_status = await asyncio.to_thread(
+            hindsight_client.recall,
+            query=user_message,
+            budget=recall_budget,
+        )
+        overall_memory_status = recall_status
+
+        # Step 3: Real-time status for Mental Model retrieval
+        yield {
+            "event": "status",
+            "data": json.dumps({"text": "Fetching mental model"})
+        }
+
+        # Hot mental models (user-persona & current-context) from cache (< 1ms warm, < 30ms cold)
+        hot_memory = await asyncio.to_thread(hindsight_client.get_hot_context)
+
+        # Check if waterfall triggers summarization of older history (>6 messages)
+        local_summary = current_summary
+        if len(history_messages) > 6:
+            total_turns = len(history_messages) // 2
+            last_msg_ts = history_messages[-1]["created_at"] if history_messages else None
+            should_sum, reason = evaluate_summarization_waterfall(
+                total_turns=total_turns,
+                total_tokens=last_tokens,
+                last_message_timestamp=last_msg_ts,
+                has_unsummarized_tail=True,
+            )
+            if should_sum:
+                logger.info(f"Summarization waterfall triggered: {reason}")
+                to_summarize = history_messages[:-6]
+                new_summary = await asyncio.to_thread(generate_summary, local_summary, to_summarize)
+                if new_summary:
+                    local_summary = new_summary
+                    if is_temp:
+                        temp_sessions[session_id]["summary"] = new_summary
+                    else:
+                        db_update_session(session_id, summary=new_summary)
+
+        # Compose Responses API input in strict cache-optimal order
+        instructions, input_items = compose_responses_input(
+            messages=history_messages,
+            current_summary=local_summary,
+            recall_memories=recalled_memories,
+            new_user_message=user_message,
+            verbosity=verbosity,
+            hot_memory=hot_memory,
+        )
+
+        # Step 4: Real-time status for Model Thinking
+        yield {
+            "event": "status",
+            "data": json.dumps({"text": "Thinking"})
+        }
 
         # Stream from Responses API runner
         async for sse_item in responses_runner.stream_turn(
