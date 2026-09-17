@@ -108,6 +108,23 @@ export function App() {
     }, 50);
   }, [isStreaming]);
 
+  // Toggle temporary chat (starts fresh temporary chat or exits it)
+  const handleToggleTempChat = useCallback(() => {
+    if (isStreaming) return;
+    if (isTemporary) {
+      setIsTemporary(false);
+      setCurrentSessionId(null);
+      setMessages([]);
+    } else {
+      setIsTemporary(true);
+      setCurrentSessionId(null);
+      setMessages([]);
+    }
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 50);
+  }, [isStreaming, isTemporary]);
+
   // Global keyboard shortcuts: ⌘K (Search), ⌘⇧O (New Chat), ⌘B (Sidebar toggle), Esc (Dismiss)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -545,9 +562,9 @@ export function App() {
               handleSendMessage();
             }
           }}
-          placeholder="Message Velocity..."
+          placeholder={isTemporary ? "Message in Temporary Chat..." : "Message Velocity..."}
           rows={1}
-          className="flex-1 bg-transparent text-[15px] font-medium text-[var(--text-primary)] placeholder-[var(--text-dim)] outline-none resize-none py-1 px-1 leading-snug max-h-40"
+          className="flex-1 bg-transparent text-[16px] sm:text-[16.5px] font-medium text-[var(--text-primary)] placeholder-[var(--text-dim)] outline-none resize-none py-1.5 px-1 leading-snug max-h-40"
         />
 
         {/* Send or Stop Generation Button */}
@@ -616,21 +633,24 @@ export function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Temp chat button: only visible on new chat (no current messages) */}
-            {(!currentSessionId || messages.length === 0) && (
-              <button
-                type="button"
-                onClick={() => setIsTemporary(!isTemporary)}
-                title={isTemporary ? 'Temporary Chat Active (Click to disable)' : 'Enable Temporary Chat (Ephemeral)'}
-                className={`p-2 rounded-xl transition-all ${
-                  isTemporary
-                    ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] shadow-sm'
-                    : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
-                }`}
-              >
-                <Ghost className="w-4 h-4" />
-              </button>
-            )}
+            {/* Temporary Chat Pill Button: Always accessible with clear icon + text label */}
+            <button
+              type="button"
+              onClick={handleToggleTempChat}
+              title={
+                isTemporary
+                  ? 'Temporary Chat Active (Click to exit and return to normal chat)'
+                  : 'Start Temporary Chat (Ephemeral, not saved to history, zero retention)'
+              }
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs sm:text-[13px] font-medium transition-all ${
+                isTemporary
+                  ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] shadow-sm'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
+              }`}
+            >
+              <Ghost className="w-3.5 h-3.5" />
+              <span>Temporary Chat</span>
+            </button>
           </div>
         </header>
 
@@ -639,9 +659,15 @@ export function App() {
           /* Centered greeting and input bar above middle of screen */
           <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-8 -translate-y-8 select-none">
             <div className="w-full max-w-2xl sm:max-w-3xl flex flex-col items-center">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-8 text-center font-sans">
+              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-3 text-center font-sans">
                 How can I help you today?
               </h1>
+              {isTemporary && (
+                <p className="text-xs font-mono text-[var(--text-dim)] mb-6 flex items-center justify-center gap-1.5">
+                  <Ghost className="w-3.5 h-3.5" /> Temporary chat &bull; Not saved to history
+                </p>
+              )}
+              {!isTemporary && <div className="mb-5" />}
               {renderInputCapsule(true)}
             </div>
           </div>
@@ -653,6 +679,14 @@ export function App() {
               className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 flex flex-col justify-start"
             >
               <div className="w-full max-w-3xl mx-auto flex flex-col flex-1">
+                {isTemporary && (
+                  <div className="w-full flex justify-center pb-4 select-none">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-mono text-[var(--text-dim)] px-3 py-1 rounded-full bg-[var(--bg-card)]">
+                      <Ghost className="w-3.5 h-3.5" />
+                      Temporary chat &bull; Not saved to history, zero retention
+                    </span>
+                  </div>
+                )}
                 {messages.map((msg) => (
                   <ChatMessageView
                     key={msg.id}

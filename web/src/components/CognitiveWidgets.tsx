@@ -150,7 +150,7 @@ export const CodeBlock: FC<{ language?: string; value: string }> = ({ language, 
     <div className="relative my-3 rounded-xl bg-[var(--bg-code)] overflow-hidden text-xs">
       {/* Header: plain language text on top-left (no bg highlight) and ONLY copy icon on top-right */}
       <div className="flex items-center justify-between px-3.5 pt-2.5 pb-1 select-none">
-        <span className="text-[var(--text-dim)] font-mono text-[11px] lowercase tracking-wide">
+        <span className="text-[var(--text-dim)] font-mono text-xs lowercase tracking-wide">
           {language || 'code'}
         </span>
         <button
@@ -162,7 +162,7 @@ export const CodeBlock: FC<{ language?: string; value: string }> = ({ language, 
           {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
       </div>
-      <pre className="p-3.5 pt-1 overflow-x-auto font-mono text-[12.5px] leading-relaxed">
+      <pre className="p-3.5 pt-1 overflow-x-auto font-mono text-[13.5px] sm:text-[14px] leading-relaxed">
         <code
           dangerouslySetInnerHTML={{ __html: highlightedHtml }}
           className="font-mono"

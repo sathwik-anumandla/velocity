@@ -57,7 +57,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
                     setEditText(message.content);
                   }
                 }}
-                className="w-full p-2.5 text-[14.5px] font-medium bg-[var(--bg-modal-inner)] rounded-xl text-[var(--text-primary)] outline-none resize-none"
+                className="w-full p-2.5 text-[16px] font-medium bg-[var(--bg-modal-inner)] rounded-xl text-[var(--text-primary)] outline-none resize-none"
                 rows={Math.min(6, Math.max(2, editText.split('\n').length))}
                 autoFocus
               />
@@ -82,7 +82,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
               </div>
             </div>
           ) : (
-            <p className="text-[15px] font-medium leading-relaxed whitespace-pre-wrap selection:bg-zinc-700">
+            <p className="text-[16.5px] sm:text-[17px] font-medium leading-relaxed whitespace-pre-wrap selection:bg-zinc-700">
               {message.content}
             </p>
           )}
@@ -163,7 +163,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
                 // Inline code: styled with the app's accent color (light blue)
                 return (
                   <code
-                    className="px-1.5 py-0.5 rounded font-mono text-[13px] font-medium"
+                    className="px-1.5 py-0.5 rounded font-mono text-[14px] sm:text-[14.5px] font-medium"
                     style={{
                       color: 'var(--accent-blue)',
                       backgroundColor: 'var(--accent-blue-bg)',
@@ -183,7 +183,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
           </ReactMarkdown>
         ) : message.isStreaming ? (
           <div className="flex items-center py-1.5 select-none">
-            <span className="shimmer-text text-[15px] font-medium tracking-tight">
+            <span className="shimmer-text text-[15.5px] sm:text-[16px] font-medium tracking-tight">
               {message.statusText || 'Thinking'}
             </span>
           </div>

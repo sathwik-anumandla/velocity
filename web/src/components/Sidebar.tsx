@@ -112,7 +112,7 @@ export const Sidebar: FC<SidebarProps> = ({
           <button
             type="button"
             onClick={onNewChat}
-            className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-[13.5px] font-medium transition-colors"
+            className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] text-[14.5px] font-medium transition-colors"
           >
             <Plus className="w-4 h-4 text-[var(--text-muted)]" />
             <span>New chat</span>
@@ -136,7 +136,7 @@ export const Sidebar: FC<SidebarProps> = ({
                 <div
                   key={session.id}
                   onClick={() => onSelectSession(session.id)}
-                  className={`group relative flex items-center justify-between px-3 py-2 rounded-xl text-[13.5px] cursor-pointer transition-colors ${
+                  className={`group relative flex items-center justify-between px-3 py-2 rounded-xl text-[14px] cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] font-semibold'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] font-medium'
