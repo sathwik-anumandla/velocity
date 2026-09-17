@@ -90,11 +90,11 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
   return (
     <div
       ref={popoverRef}
-      className="absolute bottom-full left-0 mb-3 w-72 rounded-2xl bg-[#1E1E22] border border-[#2E2E34] shadow-2xl shadow-black/80 backdrop-blur-xl p-3 z-50 text-white select-none animate-fade-in"
+      className="absolute bottom-full left-0 mb-3 w-72 rounded-2xl bg-[#1E1E22] shadow-2xl shadow-black/80 backdrop-blur-xl p-3 z-50 text-white select-none animate-fade-in"
     >
       {activeSubMenu === null ? (
         // Main Menu: Pure typography, NO icons
-        <div className="flex flex-col space-y-1">
+        <div className="flex flex-col space-y-0.5">
           <button
             type="button"
             onClick={() => setActiveSubMenu('effort')}
@@ -104,7 +104,7 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
             <span className="text-xs font-mono font-medium text-zinc-400 capitalize">{thinkingEffort}</span>
           </button>
 
-          <div className="h-[1px] bg-[#27272A] mx-2" />
+          <div className="h-[1px] bg-white/5 mx-2" />
 
           <button
             type="button"
@@ -115,7 +115,7 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
             <span className="text-xs font-mono font-medium text-zinc-400 capitalize">{recallBudget}</span>
           </button>
 
-          <div className="h-[1px] bg-[#27272A] mx-2" />
+          <div className="h-[1px] bg-white/5 mx-2" />
 
           <button
             type="button"
@@ -129,7 +129,7 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
       ) : (
         // Submenu: Clean Typography, NO header icons
         <div className="flex flex-col">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#27272A]">
+          <div className="flex items-center justify-between pb-2 mb-2">
             <button
               type="button"
               onClick={() => setActiveSubMenu(null)}

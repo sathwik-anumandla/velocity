@@ -3,13 +3,24 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
+  :root, html.dark {
     --bg-primary: #000000;
+    --bg-sidebar: #0A0A0A;
     --card-primary: #141414;
     --popover-bg: #1E1E22;
-    --border-color: #27272A;
     --text-primary: #FFFFFF;
     --text-muted: #A1A1AA;
+    color-scheme: dark;
+  }
+
+  html.light {
+    --bg-primary: #FFFFFF;
+    --bg-sidebar: #F7F7F8;
+    --card-primary: #F4F4F5;
+    --popover-bg: #FFFFFF;
+    --text-primary: #09090B;
+    --text-muted: #71717A;
+    color-scheme: light;
   }
 
   html, body, #root {
@@ -24,8 +35,8 @@
 
   /* Custom subtle scrollbar */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
@@ -43,6 +54,7 @@
 .prose-velocity {
   line-height: 1.65;
   font-size: 0.95rem;
+  color: #EDEDED;
 }
 
 .prose-velocity p {
@@ -81,7 +93,7 @@
 }
 
 .prose-velocity code:not(pre code) {
-  background-color: #27272a;
+  background-color: #1a1a1a;
   color: #e4e4e7;
   padding: 0.15rem 0.35rem;
   border-radius: 0.25rem;
@@ -92,9 +104,8 @@
 .prose-velocity pre {
   margin-top: 0.75rem;
   margin-bottom: 0.75rem;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   overflow-x: auto;
-  border: 1px solid #27272a;
   background-color: #0d0d0d;
 }
 
@@ -106,13 +117,13 @@
 }
 
 .prose-velocity a {
-  color: #60a5fa;
+  color: #e4e4e7;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .prose-velocity blockquote {
-  border-left: 3px solid #3f3f46;
+  border-left: 2px solid #3f3f46;
   padding-left: 0.75rem;
   color: #a1a1aa;
   margin-top: 0.5rem;

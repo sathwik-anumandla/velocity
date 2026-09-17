@@ -9,15 +9,13 @@ import { AgenticWorkflowStepper, ReasoningBlock, ToolCallCard, CodeBlock } from 
 interface ChatMessageViewProps {
   message: ChatMessage;
   onEditAndResend: (messageId: string, newContent: string) => void;
-  onRegenerateLast?: () => void;
-  isLastAssistant?: boolean;
+  onRegenerate?: (messageId: string) => void;
 }
 
 export const ChatMessageView: FC<ChatMessageViewProps> = ({
   message,
   onEditAndResend,
-  onRegenerateLast,
-  isLastAssistant,
+  onRegenerate,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -43,9 +41,9 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
   if (isUser) {
     return (
       <div className="flex flex-col items-end mb-6 group">
-        <div className="max-w-[85%] sm:max-w-[75%] rounded-[20px] bg-[#141414] px-4 py-2.5 text-white">
+        <div className="max-w-[85%] sm:max-w-[75%] rounded-[20px] bg-[#141414] px-4 py-3 text-white">
           {isEditing ? (
-            <div className="flex flex-col gap-2 min-w-[280px] sm:min-w-[400px]">
+            <div className="flex flex-col gap-2.5 min-w-[280px] sm:min-w-[400px]">
               <textarea
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
@@ -59,7 +57,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
                     setEditText(message.content);
                   }
                 }}
-                className="w-full p-2 text-sm bg-[#121214] border border-[#27272A] rounded-xl text-white outline-none resize-none focus:border-zinc-400"
+                className="w-full p-2.5 text-sm bg-[#0E0E10] rounded-xl text-white outline-none resize-none focus:ring-1 focus:ring-zinc-600"
                 rows={Math.min(6, Math.max(2, editText.split('\n').length))}
                 autoFocus
               />
@@ -70,21 +68,21 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
                     setIsEditing(false);
                     setEditText(message.content);
                   }}
-                  className="px-3 py-1 text-zinc-400 hover:text-white rounded-lg hover:bg-[#25252A] transition-colors"
+                  className="px-3 py-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-[#202024] transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveEdit}
-                  className="px-3 py-1 bg-white text-black font-medium rounded-lg hover:bg-zinc-200 transition-colors"
+                  className="px-3 py-1.5 bg-white text-black font-medium rounded-lg hover:bg-zinc-200 transition-colors"
                 >
                   Send
                 </button>
               </div>
             </div>
           ) : (
-            <p className="text-[14.5px] leading-relaxed whitespace-pre-wrap selection:bg-zinc-700">{message.content}</p>
+            <p className="text-[15px] leading-relaxed whitespace-pre-wrap selection:bg-zinc-700">{message.content}</p>
           )}
         </div>
 
@@ -97,7 +95,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
               title="Copy prompt"
               className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-[#141414] transition-colors"
             >
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              {copied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
             </button>
             <button
               type="button"
@@ -163,45 +161,33 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
           </ReactMarkdown>
         ) : message.isStreaming ? (
           <div className="flex items-center gap-2 text-xs font-mono text-zinc-400 py-1">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping" />
+            <span className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-ping" />
             <span>Velocity is thinking...</span>
           </div>
         ) : null}
       </div>
 
-      {/* 5. Bottom Message Actions: Copy, Regenerate — ALWAYS VISIBLE */}
+      {/* 5. Bottom Message Actions: Copy, Regenerate — ALWAYS VISIBLE on every assistant response */}
       {!message.isStreaming && message.content && (
-        <div className="flex items-center gap-1.5 mt-2 text-zinc-500">
+        <div className="flex items-center gap-1 mt-2 text-zinc-500">
           <button
             type="button"
             onClick={handleCopy}
             title="Copy response"
             className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-[#141414] transition-colors"
           >
-            {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+            {copied ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
           </button>
 
-          {isLastAssistant && onRegenerateLast && (
+          {onRegenerate && (
             <button
               type="button"
-              onClick={onRegenerateLast}
+              onClick={() => onRegenerate(message.id)}
               title="Regenerate response"
               className="p-1 rounded text-zinc-500 hover:text-zinc-300 hover:bg-[#141414] transition-colors"
             >
               <RotateCcw className="w-4 h-4" />
             </button>
-          )}
-
-          {message.memory_status && (
-            <span
-              className={`text-[10px] uppercase font-mono px-1.5 py-0.5 rounded border ml-2 ${
-                message.memory_status === 'ok'
-                  ? 'border-emerald-500/20 text-emerald-400/80 bg-emerald-500/5'
-                  : 'border-amber-500/20 text-amber-400/80 bg-amber-500/5'
-              }`}
-            >
-              Memory {message.memory_status}
-            </span>
           )}
         </div>
       )}

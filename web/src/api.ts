@@ -98,7 +98,13 @@ export interface StreamChatHandlers {
   onToolStart?: (tool: string, query?: string) => void;
   onToolDone?: (tool: string, result?: string) => void;
   onDelta: (text: string) => void;
-  onComplete: (data: { text: string; memory_status: string; usage: Record<string, any> }) => void;
+  onComplete: (data: {
+    text: string;
+    memory_status: string;
+    usage: Record<string, any>;
+    user_message_id?: string;
+    assistant_message_id?: string;
+  }) => void;
   onError: (error: string) => void;
 }
 
@@ -106,6 +112,7 @@ export async function streamChatTurn(
   params: {
     sessionId: string;
     message: string;
+    messageId?: string;
     recallBudget?: RecallBudget;
     thinkingEffort?: ThinkingEffort;
     verbosity?: Verbosity;
@@ -120,6 +127,7 @@ export async function streamChatTurn(
     body: JSON.stringify({
       session_id: params.sessionId,
       message: params.message,
+      message_id: params.messageId,
       recall_budget: params.recallBudget,
       thinking_effort: params.thinkingEffort,
       verbosity: params.verbosity,

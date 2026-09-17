@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class ChatRequest(BaseModel):
     session_id: str
     message: str
+    message_id: Optional[str] = None
     recall_budget: Optional[Literal["low", "medium", "high"]] = None
     thinking_effort: Optional[Literal["none", "low", "medium", "high", "xhigh", "max"]] = None
     verbosity: Optional[Literal["low", "medium", "high"]] = None

@@ -498,10 +498,13 @@ async def chat_stream(request: ChatRequest):
         new_total_tokens = usage_data.get("total_tokens", last_tokens)
         now_iso = datetime.utcnow().isoformat()
 
+        user_msg_id = request.message_id or str(uuid.uuid4())
+        asst_msg_id = str(uuid.uuid4())
+
         if is_temp:
             # Ephemeral memory only
             temp_sessions[session_id]["messages"].append({
-                "id": str(uuid.uuid4()),
+                "id": user_msg_id,
                 "session_id": session_id,
                 "role": "user",
                 "content": user_message,
@@ -509,7 +512,7 @@ async def chat_stream(request: ChatRequest):
                 "created_at": now_iso,
             })
             temp_sessions[session_id]["messages"].append({
-                "id": str(uuid.uuid4()),
+                "id": asst_msg_id,
                 "session_id": session_id,
                 "role": "assistant",
                 "content": full_assistant_response,
@@ -519,8 +522,6 @@ async def chat_stream(request: ChatRequest):
             temp_sessions[session_id]["last_tokens"] = new_total_tokens
         else:
             # Persistent SQLite store
-            user_msg_id = str(uuid.uuid4())
-            asst_msg_id = str(uuid.uuid4())
             db_add_message(
                 message_id=user_msg_id,
                 session_id=session_id,
@@ -540,13 +541,15 @@ async def chat_stream(request: ChatRequest):
                 last_tokens=new_total_tokens,
             )
 
-        # Emit final completion event with memory status and usage
+        # Emit final completion event with message IDs, memory status and usage
         yield {
             "event": "complete",
             "data": json.dumps({
                 "text": full_assistant_response,
                 "memory_status": overall_memory_status,
                 "usage": usage_data,
+                "user_message_id": user_msg_id,
+                "assistant_message_id": asst_msg_id,
             }),
         }
 

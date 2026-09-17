@@ -15,6 +15,27 @@ export function App() {
   const [isTemporary, setIsTemporary] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
+  // Dark/Light Theme state
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    return (localStorage.getItem('velocity-theme') as 'dark' | 'light') || 'dark';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('light');
+    } else {
+      root.classList.add('light');
+      root.classList.remove('dark');
+    }
+    localStorage.setItem('velocity-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
   // Options Popover & Toggles
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>('medium');
@@ -51,13 +72,9 @@ export function App() {
           const { messages: history } = await api.getSessionMessages(first.id);
           if (mounted) setMessages(history);
         } else {
-          // Create initial session
-          const newSess = await api.createSession();
-          if (mounted) {
-            setSessions([newSess]);
-            setCurrentSessionId(newSess.id);
-            setMessages([]);
-          }
+          // If no sessions exist, start in compose mode without saving empty session
+          setCurrentSessionId(null);
+          setMessages([]);
         }
       } catch (e) {
         console.error('Initialization error:', e);
@@ -78,29 +95,19 @@ export function App() {
     };
   }, []);
 
-  // Create new chat
-  const handleNewChat = useCallback(async () => {
+  // Prepare blank new chat without saving to SQLite until user sends prompt
+  const handleNewChat = useCallback(() => {
     if (isStreaming) return;
-    try {
-      const newSess = await api.createSession({
-        recall_budget: recallBudget,
-        thinking_effort: thinkingEffort,
-        verbosity: verbosity,
-      });
-      setSessions((prev) => [newSess, ...prev]);
-      setCurrentSessionId(newSess.id);
-      setMessages([]);
-      setIsTemporary(false);
-      textareaRef.current?.focus();
-    } catch (err) {
-      console.error('Failed to create new session:', err);
-    }
-  }, [isStreaming, recallBudget, thinkingEffort, verbosity]);
+    setCurrentSessionId(null);
+    setMessages([]);
+    setIsTemporary(false);
+    textareaRef.current?.focus();
+  }, [isStreaming]);
 
-  // Keyboard shortcut: Cmd+K / Ctrl+K for New Chat
+  // Keyboard shortcut: Cmd+Shift+O for New Chat
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'o') {
         e.preventDefault();
         handleNewChat();
       }
@@ -172,7 +179,7 @@ export function App() {
     }
   };
 
-  // Toggle option settings and save sticky to current session
+  // Options Handlers (Sticky)
   const handleUpdateEffort = async (newEffort: ThinkingEffort) => {
     setThinkingEffort(newEffort);
     if (currentSessionId && !isTemporary) {
@@ -180,7 +187,7 @@ export function App() {
         const updated = await api.updateSession(currentSessionId, { thinking_effort: newEffort });
         setSessions((prev) => prev.map((s) => (s.id === currentSessionId ? updated : s)));
       } catch (err) {
-        console.error('Failed to update thinking effort:', err);
+        console.error('Failed to update effort:', err);
       }
     }
   };
@@ -192,7 +199,7 @@ export function App() {
         const updated = await api.updateSession(currentSessionId, { recall_budget: newRecall });
         setSessions((prev) => prev.map((s) => (s.id === currentSessionId ? updated : s)));
       } catch (err) {
-        console.error('Failed to update recall budget:', err);
+        console.error('Failed to update recall:', err);
       }
     }
   };
@@ -215,11 +222,26 @@ export function App() {
     if (!text || isStreaming) return;
 
     let targetSessionId = currentSessionId;
+    // Only create session in backend if this is a new chat
     if (!targetSessionId) {
-      const newSess = await api.createSession();
-      setSessions([newSess]);
-      setCurrentSessionId(newSess.id);
-      targetSessionId = newSess.id;
+      if (!isTemporary) {
+        try {
+          const newSess = await api.createSession({
+            recall_budget: recallBudget,
+            thinking_effort: thinkingEffort,
+            verbosity: verbosity,
+          });
+          setSessions((prev) => [newSess, ...prev]);
+          setCurrentSessionId(newSess.id);
+          targetSessionId = newSess.id;
+        } catch (e) {
+          console.error('Failed to create session on message send:', e);
+          return;
+        }
+      } else {
+        targetSessionId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `temp-${Date.now()}`;
+        setCurrentSessionId(targetSessionId);
+      }
     }
 
     setInputValue('');
@@ -228,8 +250,10 @@ export function App() {
     }
     setIsOptionsOpen(false);
 
-    // 1. Optimistically append user message
-    const userMsgId = `user-${Date.now()}`;
+    // 1. Generate stable IDs matching backend
+    const userMsgId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `user-${Date.now()}`;
+    const asstMsgId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `asst-${Date.now()}`;
+
     const userMsg: ChatMessage = {
       id: userMsgId,
       session_id: targetSessionId,
@@ -238,8 +262,6 @@ export function App() {
       created_at: new Date().toISOString(),
     };
 
-    // 2. Add placeholder streaming assistant message
-    const asstMsgId = `asst-${Date.now()}`;
     const asstMsg: ChatMessage = {
       id: asstMsgId,
       session_id: targetSessionId,
@@ -262,6 +284,7 @@ export function App() {
         {
           sessionId: targetSessionId,
           message: text,
+          messageId: userMsgId,
           recallBudget,
           thinkingEffort,
           verbosity,
@@ -324,17 +347,24 @@ export function App() {
           },
           onComplete: (data) => {
             setMessages((prev) =>
-              prev.map((m) =>
-                m.id === asstMsgId
-                  ? {
-                      ...m,
-                      content: data.text || m.content,
-                      memory_status: data.memory_status,
-                      usage: data.usage,
-                      isStreaming: false,
-                    }
-                  : m
-              )
+              prev.map((m) => {
+                if (m.id === asstMsgId) {
+                  return {
+                    ...m,
+                    id: data.assistant_message_id || m.id,
+                    content: data.text || m.content,
+                    usage: data.usage,
+                    isStreaming: false,
+                  };
+                }
+                if (m.id === userMsgId && data.user_message_id) {
+                  return {
+                    ...m,
+                    id: data.user_message_id,
+                  };
+                }
+                return m;
+              })
             );
             setIsStreaming(false);
           },
@@ -375,7 +405,7 @@ export function App() {
     );
   };
 
-  // Edit user prompt & resend: truncates subsequent SQLite messages
+  // Edit user prompt & resend: truncates subsequent SQLite messages from that prompt onward
   const handleEditAndResend = async (messageId: string, newContent: string) => {
     if (!currentSessionId || isStreaming) return;
 
@@ -393,35 +423,34 @@ export function App() {
     handleSendMessage(newContent);
   };
 
-  // Regenerate last assistant response
-  const handleRegenerateLast = async () => {
+  // Regenerate assistant response (works on ANY assistant response in the conversation)
+  const handleRegenerate = async (asstMessageId: string) => {
     if (!currentSessionId || isStreaming || messages.length === 0) return;
 
-    // Find last assistant message
-    let lastAsstIdx = -1;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'assistant') {
-        lastAsstIdx = i;
+    const asstIdx = messages.findIndex((m) => m.id === asstMessageId);
+    if (asstIdx === -1) return;
+
+    // Find the user message directly preceding this assistant response
+    let userIdx = -1;
+    for (let i = asstIdx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        userIdx = i;
         break;
       }
     }
-    if (lastAsstIdx === -1) return;
+    if (userIdx === -1) return;
 
-    // Find the corresponding user message right before it
-    const lastUserMsg = messages[lastAsstIdx - 1];
-    if (!lastUserMsg || lastUserMsg.role !== 'user') return;
+    const userMsg = messages[userIdx];
 
-    const asstMsg = messages[lastAsstIdx];
+    // 1. Truncate in SQLite from this assistant message onward
+    await api.truncateMessagesFrom(currentSessionId, asstMessageId);
 
-    // 1. Truncate SQLite from that assistant message onward
-    await api.truncateMessagesFrom(currentSessionId, asstMsg.id);
-
-    // 2. Slice local messages up to user message
-    const trimmed = messages.slice(0, lastAsstIdx);
+    // 2. Slice local messages state up to user message
+    const trimmed = messages.slice(0, asstIdx);
     setMessages(trimmed);
 
-    // 3. Re-trigger stream with the user's prompt text
-    handleSendMessage(lastUserMsg.content);
+    // 3. Re-trigger stream with the user prompt
+    handleSendMessage(userMsg.content);
   };
 
   // Is options button highlighted (any non-default values)?
@@ -431,11 +460,9 @@ export function App() {
     recallBudget !== 'medium' ||
     verbosity !== 'low';
 
-  const lastAssistantMsgId = [...messages].reverse().find((m) => m.role === 'assistant')?.id;
-
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-black text-white font-sans">
-      {/* 1. Collapsible Sidebar */}
+      {/* 1. Collapsible Sidebar (Flat, no borders) */}
       {sidebarOpen && (
         <Sidebar
           sessions={sessions}
@@ -444,17 +471,17 @@ export function App() {
           onNewChat={handleNewChat}
           onDeleteSession={handleDeleteSession}
           onRenameSession={handleRenameSession}
-          isTemporary={isTemporary}
-          onToggleTemporary={setIsTemporary}
           isBackendOnline={isBackendOnline}
           onSearch={api.searchMessages}
           onCloseSidebar={() => setSidebarOpen(false)}
+          theme={theme}
+          onToggleTheme={toggleTheme}
         />
       )}
 
       {/* 2. Main Chat Area */}
       <main className="flex-1 flex flex-col h-full min-w-0 relative bg-black">
-        {/* Top Minimal Header: Pure clean canvas matching screenshot */}
+        {/* Top Minimal Header: Pure clean canvas, NO borders, NO orange dot */}
         <header className="h-12 flex items-center justify-between px-6 flex-shrink-0 select-none">
           <div className="flex items-center gap-3">
             {!sidebarOpen && (
@@ -469,28 +496,22 @@ export function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Status Dot */}
-            <span
-              className={`w-2 h-2 rounded-full ${
-                isBackendOnline ? 'bg-amber-500 shadow-sm shadow-amber-500/50' : 'bg-rose-500 animate-pulse'
-              }`}
-              title={isBackendOnline ? 'Hindsight & Velocity Online' : 'Backend Offline'}
-            />
-
-            {/* Incognito / Ghost toggle */}
-            <button
-              type="button"
-              onClick={() => setIsTemporary(!isTemporary)}
-              title={isTemporary ? 'Incognito Mode Active (No Memory Retain)' : 'Incognito Mode (Click to enable)'}
-              className={`p-1.5 rounded-lg transition-colors ${
-                isTemporary
-                  ? 'text-amber-400 hover:text-amber-300'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#141414]'
-              }`}
-            >
-              <Ghost className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-2">
+            {/* Temp chat button: only visible on new chat (no current messages) */}
+            {(!currentSessionId || messages.length === 0) && (
+              <button
+                type="button"
+                onClick={() => setIsTemporary(!isTemporary)}
+                title={isTemporary ? 'Temporary Chat Active (Click to disable)' : 'Enable Temporary Chat (Ephemeral)'}
+                className={`p-2 rounded-xl transition-all ${
+                  isTemporary
+                    ? 'bg-[#27272A] text-white shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300 hover:bg-[#141414]'
+                }`}
+              >
+                <Ghost className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </header>
 
@@ -515,8 +536,7 @@ export function App() {
                   key={msg.id}
                   message={msg}
                   onEditAndResend={handleEditAndResend}
-                  onRegenerateLast={handleRegenerateLast}
-                  isLastAssistant={msg.id === lastAssistantMsgId}
+                  onRegenerate={handleRegenerate}
                 />
               ))
             )}
@@ -538,8 +558,8 @@ export function App() {
               onUpdateVerbosity={handleUpdateVerbosity}
             />
 
-            {/* Input Capsule */}
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-full bg-[#141414] border border-[#27272A] shadow-2xl focus-within:border-zinc-500 transition-all">
+            {/* Input Capsule (Flat, NO borders) */}
+            <div className="flex items-center gap-2.5 px-3 py-2 rounded-full bg-[#141414] shadow-2xl transition-all">
               {/* '+' Options Button */}
               <button
                 id="options-toggle-btn"

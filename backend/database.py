@@ -49,11 +49,25 @@ def init_db() -> None:
     );
     """)
 
-    # Non-destructive migration: ensure verbosity column exists if DB was already created
+    # Non-destructive migrations: ensure all columns exist if DB was created with older schema
     cursor.execute("PRAGMA table_info(sessions);")
     existing_cols = [col[1] for col in cursor.fetchall()]
+    if "recall_budget" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN recall_budget TEXT NOT NULL DEFAULT 'medium';")
+    if "thinking_effort" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN thinking_effort TEXT NOT NULL DEFAULT 'medium';")
     if "verbosity" not in existing_cols:
         cursor.execute("ALTER TABLE sessions ADD COLUMN verbosity TEXT NOT NULL DEFAULT 'low';")
+    if "summary" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN summary TEXT DEFAULT NULL;")
+    if "last_tokens" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN last_tokens INTEGER DEFAULT 0;")
+
+    # Ensure messages table has memory_status
+    cursor.execute("PRAGMA table_info(messages);")
+    existing_msg_cols = [col[1] for col in cursor.fetchall()]
+    if "memory_status" not in existing_msg_cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN memory_status TEXT DEFAULT 'ok';")
 
     # 2. Messages table
     cursor.execute("""
@@ -227,6 +241,13 @@ def truncate_messages_from(session_id: str, from_message_id: str) -> int:
         (from_message_id, session_id),
     )
     row = cursor.fetchone()
+    if not row:
+        cursor.execute(
+            "SELECT created_at FROM messages WHERE (id LIKE ? OR id LIKE ?) AND session_id = ?",
+            (f"%{from_message_id}%", f"{from_message_id}%", session_id),
+        )
+        row = cursor.fetchone()
+
     if not row:
         conn.close()
         return 0

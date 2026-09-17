@@ -45,11 +45,13 @@ export interface ChatMessage {
 }
 
 export interface SearchResult {
-  id: string;
+  id?: string;
+  message_id?: string;
   session_id: string;
   role: string;
   content: string;
   created_at: string;
   headline?: string;
+  snippet?: string;
   session_name?: string;
 }
