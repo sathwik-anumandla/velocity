@@ -11,8 +11,11 @@ import {
   PanelLeftClose,
   Sun,
   Moon,
+  Brain,
 } from 'lucide-react';
 import type { Session } from '../types';
+import * as api from '../api';
+import type { HealthDetails } from '../api';
 
 interface SidebarProps {
   sessions: Session[];
@@ -22,6 +25,7 @@ interface SidebarProps {
   onDeleteSession: (id: string) => void;
   onRenameSession: (id: string, newName: string) => void;
   isBackendOnline: boolean;
+  healthDetails?: HealthDetails | null;
   onOpenSearch: () => void;
   onCloseSidebar?: () => void;
   theme?: 'dark' | 'light';
@@ -37,6 +41,7 @@ export const Sidebar: FC<SidebarProps> = ({
   onDeleteSession,
   onRenameSession,
   isBackendOnline,
+  healthDetails,
   onOpenSearch,
   onCloseSidebar,
   theme = 'dark',
@@ -47,7 +52,39 @@ export const Sidebar: FC<SidebarProps> = ({
   const [editName, setEditName] = useState('');
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+  const [isStatusOpen, setIsStatusOpen] = useState(false);
+  const [fetchedHealth, setFetchedHealth] = useState<HealthDetails | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const statusRef = useRef<HTMLDivElement>(null);
+
+  const health = fetchedHealth || healthDetails;
+
+  // Close status popup on click outside
+  useEffect(() => {
+    if (!isStatusOpen) return;
+    const handleClickOutside = (e: MouseEvent | any) => {
+      if (statusRef.current && !statusRef.current.contains(e.target as Node)) {
+        setIsStatusOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isStatusOpen]);
+
+  const handleToggleStatus = async () => {
+    const next = !isStatusOpen;
+    setIsStatusOpen(next);
+    if (next) {
+      try {
+        const details = await api.getHealthDetails();
+        setFetchedHealth(details);
+      } catch (e) {
+        console.error('Failed to refresh health details:', e);
+      }
+    }
+  };
+
+  const isOverallHealthy = health ? health.status === 'ok' : isBackendOnline;
 
   // Close 3-dots popup on click outside
   useEffect(() => {
@@ -231,38 +268,99 @@ export const Sidebar: FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* 3. Footer: Hindsight Indicator & Theme Toggle */}
-        <div className="p-3.5 flex items-center justify-between bg-[var(--bg-sidebar)]">
-          {/* Glowing Hindsight Pulse Dot + Text (Clickable button) */}
-          <button
-            type="button"
-            onClick={onOpenMemoryInspector}
-            className="flex items-center gap-2 px-2 py-1.5 -ml-1 rounded-lg hover:bg-[var(--bg-card)] transition-colors group cursor-pointer text-left"
-            title="Inspect Hindsight memory (⌘M)"
-          >
-            <span
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                isBackendOnline
-                  ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50'
-                  : 'bg-amber-500 shadow-sm shadow-amber-500/50'
-              }`}
-            />
-            <span className="text-[12px] font-mono font-medium text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors">
-              {isBackendOnline ? 'Hindsight: Ready' : 'Hindsight: Degraded'}
-            </span>
-          </button>
-
-          {/* Theme Toggle Button */}
-          {onToggleTheme && (
+        {/* 3. Footer: Status Dot (Left) & Controls: Memory + Theme (Right) */}
+        <div className="p-3.5 flex items-center justify-between bg-[var(--bg-sidebar)] select-none">
+          {/* Status Color Indicator Button with Popover (Left) */}
+          <div className="relative" ref={statusRef}>
             <button
               type="button"
-              onClick={onToggleTheme}
-              title={theme === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
-              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
+              onClick={handleToggleStatus}
+              title={`System Status: ${isOverallHealthy ? 'Healthy' : 'Degraded'}`}
+              className="p-2 -ml-1 rounded-lg hover:bg-[var(--bg-card)] transition-colors flex items-center justify-center cursor-pointer"
             >
-              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  isOverallHealthy
+                    ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50'
+                    : 'bg-amber-500 shadow-sm shadow-amber-500/50'
+                }`}
+              />
             </button>
-          )}
+
+            {/* Status Popover: pure typography, NO icons */}
+            {isStatusOpen && (
+              <div
+                className="absolute bottom-full left-0 mb-2.5 w-52 rounded-2xl bg-[var(--bg-popover)] shadow-2xl p-3.5 z-50 text-[var(--text-primary)] animate-fade-in select-none"
+              >
+                <div className="text-[11px] font-semibold text-[var(--text-dim)] uppercase tracking-wider mb-2.5 font-mono">
+                  System Status
+                </div>
+                <div className="space-y-2 text-xs font-medium">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-muted)]">Backend</span>
+                    <span
+                      className={`font-mono text-[11px] ${
+                        (health?.backend || (isBackendOnline ? 'healthy' : 'offline')) === 'healthy'
+                          ? 'text-emerald-500'
+                          : 'text-amber-500'
+                      }`}
+                    >
+                      {health?.backend || (isBackendOnline ? 'healthy' : 'offline')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-muted)]">Database</span>
+                    <span
+                      className={`font-mono text-[11px] ${
+                        (health?.database || (isBackendOnline ? 'healthy' : 'error')) === 'healthy'
+                          ? 'text-emerald-500'
+                          : 'text-amber-500'
+                      }`}
+                    >
+                      {health?.database || (isBackendOnline ? 'healthy' : 'error')}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[var(--text-muted)]">Memory</span>
+                    <span
+                      className={`font-mono text-[11px] ${
+                        (health?.hindsight || (isBackendOnline ? 'healthy' : 'unreachable')) === 'healthy'
+                          ? 'text-emerald-500'
+                          : 'text-amber-500'
+                      }`}
+                    >
+                      {health?.hindsight || (isBackendOnline ? 'healthy' : 'unreachable')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Action Controls: Memory Button (Brain icon, no text) + Theme Toggle (Right) */}
+          <div className="flex items-center gap-1">
+            {onOpenMemoryInspector && (
+              <button
+                type="button"
+                onClick={onOpenMemoryInspector}
+                title="Memory (⌘M)"
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
+              >
+                <Brain className="w-4 h-4" />
+              </button>
+            )}
+
+            {onToggleTheme && (
+              <button
+                type="button"
+                onClick={onToggleTheme}
+                title={theme === 'dark' ? 'Switch to Light theme' : 'Switch to Dark theme'}
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
+              >
+                {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
         </div>
       </aside>
 

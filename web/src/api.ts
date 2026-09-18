@@ -2,15 +2,44 @@ import type { Session, ChatMessage, SearchResult, RecallBudget, ThinkingEffort, 
 
 const API_BASE = ''; // relative URL, handled by Vite proxy in dev and FastAPI mount in prod
 
-export async function checkHealth(): Promise<boolean> {
+export interface HealthDetails {
+  status: 'ok' | 'degraded' | 'offline';
+  backend: string;
+  hindsight: string;
+  database: string;
+}
+
+export async function getHealthDetails(): Promise<HealthDetails> {
   try {
     const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      return {
+        status: 'offline',
+        backend: 'unreachable',
+        hindsight: 'unreachable',
+        database: 'unreachable',
+      };
+    }
     const data = await res.json();
-    return data.backend === 'healthy';
+    return {
+      status: data.status || 'ok',
+      backend: data.backend || 'healthy',
+      hindsight: data.hindsight || 'healthy',
+      database: data.database || 'healthy',
+    };
   } catch {
-    return false;
+    return {
+      status: 'offline',
+      backend: 'unreachable',
+      hindsight: 'unreachable',
+      database: 'unreachable',
+    };
   }
+}
+
+export async function checkHealth(): Promise<boolean> {
+  const details = await getHealthDetails();
+  return details.status === 'ok';
 }
 
 export async function listSessions(): Promise<Session[]> {

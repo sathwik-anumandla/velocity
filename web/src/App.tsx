@@ -14,6 +14,7 @@ export function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isBackendOnline, setIsBackendOnline] = useState(true);
+  const [healthDetails, setHealthDetails] = useState<api.HealthDetails | null>(null);
   const [isTemporary, setIsTemporary] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -58,9 +59,10 @@ export function App() {
     let mounted = true;
 
     async function init() {
-      const online = await api.checkHealth();
+      const health = await api.getHealthDetails();
       if (!mounted) return;
-      setIsBackendOnline(online);
+      setIsBackendOnline(health.status === 'ok');
+      setHealthDetails(health);
 
       try {
         const loadedSessions = await api.listSessions();
@@ -102,8 +104,11 @@ export function App() {
 
     // Check health periodically
     const interval = setInterval(async () => {
-      const online = await api.checkHealth();
-      if (mounted) setIsBackendOnline(online);
+      const health = await api.getHealthDetails();
+      if (mounted) {
+        setIsBackendOnline(health.status === 'ok');
+        setHealthDetails(health);
+      }
     }, 8000);
 
     return () => {
@@ -649,6 +654,7 @@ export function App() {
           onDeleteSession={handleDeleteSession}
           onRenameSession={handleRenameSession}
           isBackendOnline={isBackendOnline}
+          healthDetails={healthDetails}
           onOpenSearch={() => setIsSearchOpen(true)}
           onCloseSidebar={() => setSidebarOpen(false)}
           theme={theme}
