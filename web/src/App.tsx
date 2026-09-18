@@ -660,7 +660,7 @@ export function App() {
       {/* 2. Main Chat Area */}
       <main className="flex-1 flex flex-col h-full min-w-0 relative bg-[var(--bg-primary)]">
         {/* Top Minimal Header: Pure clean canvas, NO borders, NO orange dot */}
-        <header className="h-12 flex items-center justify-between px-6 flex-shrink-0 select-none">
+        <header className="relative z-30 h-12 flex items-center justify-between px-6 flex-shrink-0 select-none">
           <div className="flex items-center gap-3">
             {!sidebarOpen && (
               <button
@@ -700,8 +700,8 @@ export function App() {
         {/* 3. Claude/ChatGPT/Gemini Centered New Chat View vs. Conversation View */}
         {messages.length === 0 ? (
           /* Centered greeting and input bar above middle of screen */
-          <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-8 -translate-y-8 select-none">
-            <div className="w-full max-w-2xl sm:max-w-3xl flex flex-col items-center">
+          <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-8 select-none">
+            <div className="w-full max-w-2xl sm:max-w-3xl flex flex-col items-center -translate-y-8">
               <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-8 text-center font-sans">
                 How can I help you today?
               </h1>
@@ -728,7 +728,7 @@ export function App() {
               </div>
             </div>
 
-            {/* Smart Scroll Lock Pill: Minimal floating indicator when scrolled up */}
+            {/* Scroll to Bottom Button: Round button with down arrow, no text */}
             {isUserScrolledUp && (
               <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 animate-fade-in pointer-events-auto">
                 <button
@@ -737,10 +737,10 @@ export function App() {
                     setIsUserScrolledUp(false);
                     scrollToBottom(true);
                   }}
-                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--bg-pill)] hover:bg-[var(--bg-pill-hover)] text-[var(--text-primary)] text-xs font-medium shadow-xl backdrop-blur-md transition-all cursor-pointer select-none"
+                  title="Scroll to bottom"
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-[var(--bg-pill)] hover:bg-[var(--bg-pill-hover)] text-[var(--text-primary)] shadow-xl backdrop-blur-md transition-all cursor-pointer select-none active:scale-95"
                 >
-                  <ArrowDown className="w-3.5 h-3.5" />
-                  <span>{isStreaming ? 'New messages' : 'Scroll to bottom'}</span>
+                  <ArrowDown className="w-4 h-4" />
                 </button>
               </div>
             )}
