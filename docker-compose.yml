@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-velocity_secure_hindsight_db_pass}
       POSTGRES_DB: ${POSTGRES_DB:-hindsight}
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - velocity-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -23,8 +23,8 @@ services:
     restart: unless-stopped
     shm_size: 1g
     ports:
-      - "8888:8888"   # Hindsight Core REST API & MCP
-      - "9999:9999"   # Hindsight Control Plane Web UI
+      - "127.0.0.1:8888:8888"   # Hindsight Core REST API & MCP (localhost only)
+      - "127.0.0.1:9999:9999"   # Hindsight Control Plane Web UI (localhost only)
     environment:
       - HINDSIGHT_API_DATABASE_URL=postgresql://${POSTGRES_USER:-hindsight}:${POSTGRES_PASSWORD:-velocity_secure_hindsight_db_pass}@postgres:5432/${POSTGRES_DB:-hindsight}
       - HINDSIGHT_API_WORKER_ID=${HINDSIGHT_API_WORKER_ID:-velocity-worker-1}
@@ -53,7 +53,7 @@ services:
     container_name: velocity-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - .:/app
       - velocity-sqlite-data:/app/data
