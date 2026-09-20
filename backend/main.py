@@ -646,10 +646,9 @@ async def mobile_setup_page(request: Request):
     })
     has_creds = bool(client_id and client_secret)
 
-    qr_canvas = "<div class='qr-wrapper'><canvas id='qrcode'></canvas></div>" if has_creds else ""
+    qr_container = "<div id='qrcode' class='qr-wrapper'></div>" if has_creds else ""
     copy_btn = f"<button class='btn' onclick='navigator.clipboard.writeText({json.dumps(payload)}); alert(`Copied connection payload to clipboard!`);'>Copy Connection Payload</button>" if has_creds else ""
     warning_box = "" if has_creds else "<div class='warning'>⚠️ <b>Service Token not configured in .env</b><br><br>Add <code>CF_ACCESS_CLIENT_ID</code> and <code>CF_ACCESS_CLIENT_SECRET</code> to your VPS <code>/root/velocity/.env</code>, then restart the backend.</div>"
-    qr_script = f"<script>QRCode.toCanvas(document.getElementById('qrcode'), {json.dumps(payload)}, {{ width: 220, margin: 0, color: {{ dark: '#000000', light: '#FFFFFF' }} }});</script>" if has_creds else ""
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en" class="dark">
@@ -659,7 +658,7 @@ async def mobile_setup_page(request: Request):
     <title>Velocity — Mobile Setup</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link href="https://api.fontshare.com/v2/css?f[]=satoshi@500,600,700&display=swap" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         body {{
             margin: 0;
@@ -690,7 +689,7 @@ async def mobile_setup_page(request: Request):
         p {{
             font-size: 13.5px;
             color: #A1A1AA;
-            margin: 0 0 28px 0;
+            margin: 0 0 24px 0;
             line-height: 1.5;
         }}
         .qr-wrapper {{
@@ -699,9 +698,12 @@ async def mobile_setup_page(request: Request):
             border-radius: 16px;
             display: inline-block;
             margin-bottom: 24px;
+            min-width: 220px;
+            min-height: 220px;
         }}
-        canvas {{
-            display: block;
+        .qr-wrapper img, .qr-wrapper canvas {{
+            display: block !important;
+            margin: 0 auto;
         }}
         .badge {{
             display: inline-block;
@@ -726,9 +728,9 @@ async def mobile_setup_page(request: Request):
             background: #27272A;
             color: #FFFFFF;
             border: none;
-            padding: 10px 18px;
-            border-radius: 10px;
-            font-size: 12.5px;
+            padding: 12px 18px;
+            border-radius: 12px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
             transition: background 0.2s;
@@ -745,12 +747,37 @@ async def mobile_setup_page(request: Request):
         <h1>Link Mobile App</h1>
         <p>Open Velocity on your mobile device and scan this QR code to connect securely.</p>
         
-        {qr_canvas}
+        {qr_container}
         {copy_btn}
         {warning_box}
     </div>
 
-    {qr_script}
+    <script>
+      const payloadStr = {json.dumps(payload)};
+      function renderQR() {{
+        const el = document.getElementById("qrcode");
+        if (!el) return;
+        if (window.QRCode) {{
+          el.innerHTML = "";
+          new QRCode(el, {{
+            text: payloadStr,
+            width: 220,
+            height: 220,
+            colorDark: "#000000",
+            colorLight: "#ffffff",
+            correctLevel: QRCode.CorrectLevel.M
+          }});
+        }} else {{
+          setTimeout(renderQR, 80);
+        }}
+      }}
+      if (document.readyState === "loading") {{
+        document.addEventListener("DOMContentLoaded", renderQR);
+      }} else {{
+        renderQR();
+      }}
+      window.addEventListener("load", renderQR);
+    </script>
 </body>
 </html>"""
     return HTMLResponse(content=html_content)
@@ -769,5 +796,6 @@ async def spa_fallback(full_path: str):
         if os.path.isfile(index_file):
             return FileResponse(index_file)
     raise HTTPException(status_code=404, detail="Not Found")
+
 
 
