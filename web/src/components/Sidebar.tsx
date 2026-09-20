@@ -118,9 +118,9 @@ export const Sidebar: FC<SidebarProps> = ({
       <aside className="w-[280px] flex-shrink-0 h-full bg-[var(--bg-sidebar)] flex flex-col justify-between select-none">
         {/* 1. Header & New Chat */}
         <div className="p-3.5 flex flex-col gap-2.5">
-          {/* Brand Header: Velocity (bold) + Search Button + Collapse Button */}
+          {/* Brand Header: Velocity + Search Button + Collapse Button */}
           <div className="flex items-center justify-between px-1.5 py-1">
-            <span className="font-black text-[21px] tracking-tight text-[var(--text-primary)] font-sans">
+            <span className="font-bold text-[20px] tracking-tight text-[var(--text-primary)] font-sans">
               Velocity
             </span>
             <div className="flex items-center gap-1">

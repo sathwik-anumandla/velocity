@@ -111,3 +111,6 @@ dist/
 .vercel/
 **/dist-ssr/
 
+# Mobile Specs & Local Docs
+MOBILE_SPEC.md
+
