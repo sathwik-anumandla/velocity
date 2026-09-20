@@ -18,8 +18,8 @@ export default {
         }
       },
       fontFamily: {
-        sans: ['Geist', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
-        mono: ['Geist Mono', 'JetBrains Mono', 'ui-monospace', 'monospace'],
+        sans: ['Satoshi', 'Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
       },
       keyframes: {
         'fade-in': {
