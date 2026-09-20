@@ -139,7 +139,7 @@ app.add_middleware(
 
 # Mount Web UI (Flutter web or frontend dist)
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse, Response
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -154,32 +154,45 @@ class NoCacheStaticFiles(StaticFiles):
         return response
 
 
+dist_dir: Optional[str] = None
 for candidate_path in [
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "dist"),
     "/app/web/dist",
     "./web/dist",
 ]:
     if os.path.exists(candidate_path):
+        dist_dir = candidate_path
+        assets_path = os.path.join(candidate_path, "assets")
+        if os.path.exists(assets_path):
+            app.mount("/assets", NoCacheStaticFiles(directory=assets_path), name="assets")
+        # Also keep /ui mounted for backwards compatibility
         app.mount("/ui", NoCacheStaticFiles(directory=candidate_path, html=True), name="ui")
-        logger.info(f"Mounted Web UI from {candidate_path} at /ui (no-cache enabled)")
+        logger.info(f"Mounted Web UI from {candidate_path} at / and /ui (no-cache enabled)")
         break
 
 
-@app.get("/ui")
-async def ui_redirect():
-    return RedirectResponse(url="/ui/")
+@app.get("/favicon.svg")
+async def get_favicon():
+    if dist_dir:
+        fav_file = os.path.join(dist_dir, "favicon.svg")
+        if os.path.isfile(fav_file):
+            return FileResponse(fav_file)
+    return Response(status_code=404)
 
 
 # ==============================================================================
-# 1. Health Endpoint
+# 1. Root & Health Endpoints
 # ==============================================================================
 @app.get("/")
 async def root():
+    if dist_dir:
+        index_file = os.path.join(dist_dir, "index.html")
+        if os.path.isfile(index_file):
+            return FileResponse(index_file)
     return {
         "status": "online",
         "service": "Velocity Assistant Backend",
         "version": "1.0.0",
-        "ui": "/ui/",
     }
 
 
@@ -613,4 +626,20 @@ async def reflect_memory(req: ReflectRequest):
         "citations": citations,
         "status": status,
     }
+
+
+# ==============================================================================
+# SPA Fallback (Client-side routing & deep links)
+# ==============================================================================
+@app.get("/{full_path:path}")
+async def spa_fallback(full_path: str):
+    if dist_dir:
+        target_file = os.path.join(dist_dir, full_path)
+        if os.path.isfile(target_file):
+            return FileResponse(target_file)
+        index_file = os.path.join(dist_dir, "index.html")
+        if os.path.isfile(index_file):
+            return FileResponse(index_file)
+    raise HTTPException(status_code=404, detail="Not Found")
+
 
