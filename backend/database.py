@@ -63,12 +63,6 @@ def init_db() -> None:
     if "last_tokens" not in existing_cols:
         cursor.execute("ALTER TABLE sessions ADD COLUMN last_tokens INTEGER DEFAULT 0;")
 
-    # Ensure messages table has memory_status
-    cursor.execute("PRAGMA table_info(messages);")
-    existing_msg_cols = [col[1] for col in cursor.fetchall()]
-    if "memory_status" not in existing_msg_cols:
-        cursor.execute("ALTER TABLE messages ADD COLUMN memory_status TEXT DEFAULT 'ok';")
-
     # 2. Messages table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS messages (
@@ -81,6 +75,12 @@ def init_db() -> None:
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     );
     """)
+
+    # Ensure messages table has memory_status (for older DB schemas)
+    cursor.execute("PRAGMA table_info(messages);")
+    existing_msg_cols = [col[1] for col in cursor.fetchall()]
+    if "memory_status" not in existing_msg_cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN memory_status TEXT DEFAULT 'ok';")
 
     # 3. FTS5 Virtual Table for full-text message search
     cursor.execute("""
