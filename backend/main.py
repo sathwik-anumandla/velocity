@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel
 
-from fastapi import FastAPI, HTTPException, Query, Path
+from fastapi import FastAPI, HTTPException, Query, Path, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 from dotenv import load_dotenv
@@ -139,7 +139,7 @@ app.add_middleware(
 
 # Mount Web UI (Flutter web or frontend dist)
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import RedirectResponse, FileResponse, Response
+from fastapi.responses import RedirectResponse, FileResponse, Response, HTMLResponse
 
 
 class NoCacheStaticFiles(StaticFiles):
@@ -626,6 +626,134 @@ async def reflect_memory(req: ReflectRequest):
         "citations": citations,
         "status": status,
     }
+
+
+# ==============================================================================
+# Mobile Link & QR Code Setup Page
+# ==============================================================================
+@app.get("/mobile", response_class=HTMLResponse)
+async def mobile_setup_page(request: Request):
+    client_id = os.getenv("CF_ACCESS_CLIENT_ID") or os.getenv("MOBILE_CF_CLIENT_ID") or ""
+    client_secret = os.getenv("CF_ACCESS_CLIENT_SECRET") or os.getenv("MOBILE_CF_CLIENT_SECRET") or ""
+    base_url = str(request.base_url).rstrip("/")
+    if "https://" not in base_url and not base_url.startswith("http://localhost") and not base_url.startswith("http://127.0.0.1"):
+        base_url = base_url.replace("http://", "https://")
+
+    payload = json.dumps({
+        "url": base_url,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    })
+    has_creds = bool(client_id and client_secret)
+
+    qr_canvas = "<div class='qr-wrapper'><canvas id='qrcode'></canvas></div>" if has_creds else ""
+    copy_btn = f"<button class='btn' onclick='navigator.clipboard.writeText({json.dumps(payload)}); alert(`Copied connection payload to clipboard!`);'>Copy Connection Payload</button>" if has_creds else ""
+    warning_box = "" if has_creds else "<div class='warning'>⚠️ <b>Service Token not configured in .env</b><br><br>Add <code>CF_ACCESS_CLIENT_ID</code> and <code>CF_ACCESS_CLIENT_SECRET</code> to your VPS <code>/root/velocity/.env</code>, then restart the backend.</div>"
+    qr_script = f"<script>QRCode.toCanvas(document.getElementById('qrcode'), {json.dumps(payload)}, {{ width: 220, margin: 0, color: {{ dark: '#000000', light: '#FFFFFF' }} }});</script>" if has_creds else ""
+
+    html_content = f"""<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velocity — Mobile Setup</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@500,600,700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <style>
+        body {{
+            margin: 0;
+            padding: 0;
+            background-color: #000000;
+            color: #FFFFFF;
+            font-family: 'Satoshi', -apple-system, BlinkMacSystemFont, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }}
+        .card {{
+            background-color: #0A0A0A;
+            border-radius: 24px;
+            padding: 40px;
+            max-width: 380px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.8);
+        }}
+        h1 {{
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0 0 8px 0;
+            letter-spacing: -0.5px;
+        }}
+        p {{
+            font-size: 13.5px;
+            color: #A1A1AA;
+            margin: 0 0 28px 0;
+            line-height: 1.5;
+        }}
+        .qr-wrapper {{
+            background: #FFFFFF;
+            padding: 16px;
+            border-radius: 16px;
+            display: inline-block;
+            margin-bottom: 24px;
+        }}
+        canvas {{
+            display: block;
+        }}
+        .badge {{
+            display: inline-block;
+            background: #141414;
+            color: #71717A;
+            font-size: 11.5px;
+            font-family: monospace;
+            padding: 6px 12px;
+            border-radius: 9999px;
+            margin-bottom: 16px;
+        }}
+        .warning {{
+            background: #27272A;
+            color: #F59E0B;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 12.5px;
+            line-height: 1.5;
+            text-align: left;
+        }}
+        .btn {{
+            background: #27272A;
+            color: #FFFFFF;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 10px;
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }}
+        .btn:hover {{
+            background: #343438;
+        }}
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge">{base_url}</div>
+        <h1>Link Mobile App</h1>
+        <p>Open Velocity on your mobile device and scan this QR code to connect securely.</p>
+        
+        {qr_canvas}
+        {copy_btn}
+        {warning_box}
+    </div>
+
+    {qr_script}
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
 
 
 # ==============================================================================
