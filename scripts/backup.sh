@@ -48,7 +48,7 @@ echo "--> Local backup created: $BACKUP_DIR/$ARCHIVE_NAME ($(du -h "$ARCHIVE_NAM
 # 5. Off-site sync to Cloudflare R2 (if rclone is configured)
 if command -v rclone &> /dev/null && rclone listremotes 2>/dev/null | grep -q "r2:"; then
     echo "--> Uploading off-site to Cloudflare R2 ($R2_BUCKET)..."
-    if rclone copy "$BACKUP_DIR/$ARCHIVE_NAME" "$R2_BUCKET/" --no-check-dest; then
+    if rclone copy "$BACKUP_DIR/$ARCHIVE_NAME" "$R2_BUCKET/"; then
         echo "--> Cloudflare R2 upload successful!"
         # Prune remote backups older than RETENTION_DAYS
         rclone delete --min-age "${RETENTION_DAYS}d" "$R2_BUCKET/" 2>/dev/null || true
