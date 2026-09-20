@@ -701,8 +701,11 @@ async def mobile_setup_page(request: Request):
             min-width: 220px;
             min-height: 220px;
         }}
-        .qr-wrapper img, .qr-wrapper canvas {{
-            display: block !important;
+        .qr-wrapper canvas {{
+            display: none !important;
+        }}
+        .qr-wrapper img {{
+            display: block;
             margin: 0 auto;
         }}
         .badge {{
