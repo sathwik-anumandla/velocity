@@ -612,6 +612,21 @@ async def get_mental_models():
     return {"items": items}
 
 
+@app.post("/memory/mental-models/{model_id}/refresh")
+async def refresh_mental_model_endpoint(model_id: str):
+    """
+    Clears cached content and triggers a fresh reflect re-synthesis for a mental model.
+    """
+    cleared = await asyncio.to_thread(hindsight_client.clear_mental_model, model_id)
+    op_id = await asyncio.to_thread(hindsight_client.refresh_mental_model, model_id)
+    return {
+        "model_id": model_id,
+        "cleared": cleared,
+        "operation_id": op_id,
+        "status": "refreshing" if op_id else "error",
+    }
+
+
 @app.post("/memory/reflect")
 async def reflect_memory(req: ReflectRequest):
     """

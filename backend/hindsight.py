@@ -25,11 +25,12 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
         "id": "current-context",
         "name": "Current Context & Open Loops",
         "source_query": (
-            "What is the user actively working on right now? Identify: "
+            "What is the user actively working on right now? Identify strictly in English: "
             "(1) current focus and active project, "
             "(2) unresolved open loops or pending investigations, "
             "(3) recent decisions made, and "
-            "(4) immediate next objectives."
+            "(4) immediate next objectives. "
+            "Synthesize strictly in English. Discard any non-English text or web scraping noise."
         ),
         "trigger": {
             "refresh_after_consolidation": True,
@@ -40,11 +41,12 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
         "id": "user-persona",
         "name": "User Persona & Philosophy",
         "source_query": (
-            "Summarize the user profile: "
+            "Summarize the user profile strictly in English: "
             "(1) communication preferences (verbosity, tone, structure), "
             "(2) engineering philosophy (practicality, cost-effectiveness, simplicity), "
             "(3) UI/UX aesthetic taste, and "
-            "(4) mental models and core beliefs about software and AI."
+            "(4) mental models and core beliefs about software and AI. "
+            "Synthesize strictly in English. Discard any non-English text or web scraping noise."
         ),
         "trigger": {
             "refresh_after_consolidation": True,
@@ -55,11 +57,13 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
         "id": "projects-and-decisions",
         "name": "Projects & Technical Decisions",
         "source_query": (
-            "For each project the user is building (including Velocity), summarize: "
+            "For each project the user is building (including Velocity), summarize strictly in English: "
             "(1) project objective, "
             "(2) current architecture and tech stack, "
             "(3) major technical decisions with their rationale (why it was chosen), and "
-            "(4) key constraints."
+            "(4) key constraints. "
+            "Synthesize strictly in English. Include only user-initiated projects and decisions. "
+            "Ignore non-English text, web scraping artifacts, and third-party forum content."
         ),
         "trigger": {
             "refresh_after_consolidation": True,
@@ -71,7 +75,8 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
         "name": "Goals & Long-Term Interests",
         "source_query": (
             "What are the user primary long-term goals, recurring areas of curiosity, "
-            "and research topics in technology, AI agents, and system architecture?"
+            "and research topics in technology, AI agents, and system architecture? "
+            "Synthesize strictly in English."
         ),
         "trigger": {
             "refresh_after_consolidation": True,
@@ -115,7 +120,7 @@ class HindsightClient:
     def bootstrap_memory_bank(self) -> None:
         """
         Idempotently configures the memory bank with domain missions and disposition traits,
-        and initializes the 4 foundational mental models with automatic consolidation triggers.
+        and initializes or updates the 4 foundational mental models.
         Runs safely on startup without crashing if Hindsight is temporarily unreachable.
         """
         try:
@@ -128,16 +133,19 @@ class HindsightClient:
                     "retain_mission": (
                         "Extract technical decisions with rationale, architecture choices, "
                         "user preferences, current focus, open loops, and project requirements. "
-                        "Ignore pleasantries, greetings, and temporary conversational filler."
+                        "Extract strictly in English. Completely ignore non-English text, foreign-language noise, "
+                        "web scraping artifacts, pleasantries, greetings, and temporary conversational filler."
                     ),
                     "observations_mission": (
                         "Synthesize durable user preferences, behavioral patterns, "
-                        "technical decisions, and mental models. Highlight contradictions or evolving choices."
+                        "technical decisions, and mental models strictly in English. "
+                        "Highlight contradictions or evolving choices. Discard any foreign-language text."
                     ),
                     "reflect_mission": (
                         "You are a technical co-pilot and second brain for thinking, building, "
                         "debugging, and deciding. Base your reasoning on past user decisions, "
-                        "stated preferences, and current context. Be direct, concise, and technically grounded."
+                        "stated preferences, and current context. Be direct, concise, and technically grounded. "
+                        "Respond strictly in English."
                     ),
                     "disposition_skepticism": 3,
                     "disposition_literalism": 4,
@@ -150,7 +158,7 @@ class HindsightClient:
             else:
                 logger.warning(f"Could not update bank config: status {resp.status_code}, response: {resp.text}")
 
-            # 2. Check and register missing foundational mental models
+            # 2. Check and register or update foundational mental models
             models_url = f"{self.base_url}/v1/default/banks/{self.bank_id}/mental-models"
             list_resp = requests.get(models_url, timeout=10)
             existing_ids = set()
@@ -168,10 +176,51 @@ class HindsightClient:
                     else:
                         logger.warning(f"Failed to create mental model '{model_id}': {create_resp.text}")
                 else:
-                    logger.info(f"Mental model '{model_id}' is already registered.")
+                    # Update existing model with latest source_query
+                    patch_url = f"{models_url}/{model_id}"
+                    patch_payload = {
+                        "name": model_spec.get("name"),
+                        "source_query": model_spec.get("source_query"),
+                    }
+                    try:
+                        patch_resp = requests.patch(patch_url, json=patch_payload, timeout=10)
+                        if patch_resp.status_code == 200:
+                            logger.info(f"Mental model '{model_id}' updated with latest source_query.")
+                        else:
+                            logger.warning(f"Could not patch mental model '{model_id}': {patch_resp.text}")
+                    except Exception as pe:
+                        logger.warning(f"Failed to patch mental model '{model_id}': {pe}")
 
         except Exception as e:
             logger.warning(f"Hindsight bank bootstrap failed or timed out (will retry later): {e}")
+
+    def clear_mental_model(self, model_id: str) -> bool:
+        """
+        Clears the cached content of a mental model, forcing the next refresh to be a full re-synthesis.
+        """
+        url = f"{self.base_url}/v1/default/banks/{self.bank_id}/mental-models/{model_id}/clear"
+        try:
+            resp = requests.post(url, timeout=10)
+            return resp.status_code in (200, 201, 204)
+        except Exception as e:
+            logger.warning(f"Failed to clear mental model '{model_id}': {e}")
+            return False
+
+    def refresh_mental_model(self, model_id: str) -> Optional[str]:
+        """
+        Triggers a fresh reflect re-synthesis of a mental model.
+        Returns the operation_id if queued/started, or None on failure.
+        """
+        url = f"{self.base_url}/v1/default/banks/{self.bank_id}/mental-models/{model_id}/refresh"
+        try:
+            resp = requests.post(url, timeout=15)
+            if resp.status_code in (200, 201, 202):
+                data = resp.json()
+                return data.get("operation_id") if isinstance(data, dict) else "ok"
+            return None
+        except Exception as e:
+            logger.warning(f"Failed to refresh mental model '{model_id}': {e}")
+            return None
 
     def get_mental_model(self, model_id: str) -> Optional[str]:
         """
