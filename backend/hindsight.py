@@ -9,6 +9,7 @@ Comprehensive memory integration with Hindsight:
 """
 
 import os
+import re
 import json
 import time
 import logging
@@ -33,8 +34,7 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
             "Synthesize strictly in English. Discard any non-English text or web scraping noise."
         ),
         "trigger": {
-            "refresh_after_consolidation": True,
-            "min_refresh_interval_seconds": 900,  # 15 mins floor
+            "refresh_cron": "0 3 * * *",
         },
     },
     {
@@ -49,8 +49,7 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
             "Synthesize strictly in English. Discard any non-English text or web scraping noise."
         ),
         "trigger": {
-            "refresh_after_consolidation": True,
-            "min_refresh_interval_seconds": 1800,  # 30 mins floor
+            "refresh_cron": "0 3 * * *",
         },
     },
     {
@@ -66,8 +65,7 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
             "Ignore non-English text, web scraping artifacts, and third-party forum content."
         ),
         "trigger": {
-            "refresh_after_consolidation": True,
-            "min_refresh_interval_seconds": 1800,  # 30 mins floor
+            "refresh_cron": "0 3 * * *",
         },
     },
     {
@@ -79,8 +77,7 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
             "Synthesize strictly in English."
         ),
         "trigger": {
-            "refresh_after_consolidation": True,
-            "min_refresh_interval_seconds": 3600,  # 60 mins floor
+            "refresh_cron": "0 3 * * *",
         },
     },
 ]
@@ -176,16 +173,17 @@ class HindsightClient:
                     else:
                         logger.warning(f"Failed to create mental model '{model_id}': {create_resp.text}")
                 else:
-                    # Update existing model with latest source_query
+                    # Update existing model with latest source_query and trigger
                     patch_url = f"{models_url}/{model_id}"
                     patch_payload = {
                         "name": model_spec.get("name"),
                         "source_query": model_spec.get("source_query"),
+                        "trigger": model_spec.get("trigger"),
                     }
                     try:
                         patch_resp = requests.patch(patch_url, json=patch_payload, timeout=10)
                         if patch_resp.status_code == 200:
-                            logger.info(f"Mental model '{model_id}' updated with latest source_query.")
+                            logger.info(f"Mental model '{model_id}' updated with latest source_query & trigger.")
                         else:
                             logger.warning(f"Could not patch mental model '{model_id}': {patch_resp.text}")
                     except Exception as pe:
@@ -221,6 +219,18 @@ class HindsightClient:
         except Exception as e:
             logger.warning(f"Failed to refresh mental model '{model_id}': {e}")
             return None
+
+    def consolidate(self) -> bool:
+        """
+        Manually triggers an offline consolidation pass across unconsolidated memories in Hindsight.
+        """
+        url = f"{self.base_url}/v1/default/banks/{self.bank_id}/consolidate"
+        try:
+            resp = requests.post(url, timeout=20)
+            return resp.status_code in (200, 201, 202)
+        except Exception as e:
+            logger.warning(f"Failed to trigger Hindsight consolidation: {e}")
+            return False
 
     def get_mental_model(self, model_id: str) -> Optional[str]:
         """
@@ -387,8 +397,25 @@ class HindsightClient:
         - Tagging for strict session filtering
         - ISO-8601 timestamps for TEMPR temporal reasoning
         """
-        if not (user_message and user_message.strip()) or not (assistant_response and assistant_response.strip()):
+        user_clean = user_message.strip()
+        assistant_clean = assistant_response.strip()
+        if not user_clean or not assistant_clean:
             logger.info("Skipping Hindsight retain for empty turn.")
+            return "ok"
+
+        # Ingress filter 1: Skip conversational filler and short acknowledgments
+        filler_words = {
+            "ok", "okay", "thanks", "thank you", "got it", "sure", "cool",
+            "great", "yes", "no", "yep", "nope", "perfect", "done", "nice",
+            "alright", "sounds good", "continue", "go ahead"
+        }
+        if user_clean.lower().strip("!.,? ") in filler_words and len(assistant_clean) < 80:
+            logger.info(f"Skipping Hindsight retain for conversational filler: '{user_clean}'")
+            return "ok"
+
+        # Ingress filter 2: Skip retention if foreign CJK characters are detected (prevents web-scrape contamination)
+        if re.search(r'[\u4e00-\u9fff]', user_clean) or re.search(r'[\u4e00-\u9fff]', assistant_clean):
+            logger.warning("Skipping Hindsight retain: CJK characters detected in turn content.")
             return "ok"
 
         self._drain_retry_queue()

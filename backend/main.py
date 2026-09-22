@@ -627,6 +627,17 @@ async def refresh_mental_model_endpoint(model_id: str):
     }
 
 
+@app.post("/memory/consolidate")
+async def trigger_consolidation_endpoint():
+    """
+    Triggers an offline observation consolidation pass across unconsolidated memories in Hindsight.
+    """
+    success = await asyncio.to_thread(hindsight_client.consolidate)
+    return {
+        "status": "triggered" if success else "error"
+    }
+
+
 @app.post("/memory/reflect")
 async def reflect_memory(req: ReflectRequest):
     """

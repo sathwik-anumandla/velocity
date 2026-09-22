@@ -31,16 +31,16 @@ CONSULT_MEMORY_TOOL_DEFINITION = {
     "type": "function",
     "name": "consult_memory",
     "description": (
-        "Run an agentic reflection across long-term memory, past conversations, decisions, "
-        "and observations in Hindsight. Use this when the user asks 'why' a decision was made, "
-        "questions about past projects, discussions, or when you need deep historical context beyond the immediate turn."
+        "Retrieve relevant past decisions, preferences, and facts from long-term memory in Hindsight. "
+        "Use this when the user asks about past topics, architecture decisions, previous discussions, "
+        "or when you need factual historical context beyond the immediate session."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "query": {
                 "type": "string",
-                "description": "The natural language question or topic to research across past memory.",
+                "description": "The search query or topic to look up in past memory.",
             }
         },
         "required": ["query"],
@@ -326,15 +326,14 @@ class ResponsesRunner:
                         "data": json.dumps({"tool": "consult_memory", "query": f"Consulting memory: {query}"}),
                     }
 
-                    answer, citations, status = await loop.run_in_executor(
-                        None, self.hindsight.reflect, query, "mid"
+                    memories, status = await loop.run_in_executor(
+                        None, self.hindsight.recall, query, "mid", 5
                     )
-                    if answer:
-                        tool_output = f"[Hindsight Memory Result]:\n{answer}"
-                        if citations:
-                            tool_output += f"\n\n[Citations]: {json.dumps(citations)}"
+                    if memories:
+                        facts_text = "\n".join(f"- {m}" for m in memories)
+                        tool_output = f"[Hindsight Memories Found]:\n{facts_text}"
                     else:
-                        tool_output = "[No specific memories or decisions found for this query in Hindsight]"
+                        tool_output = "[No specific memories found for this query in Hindsight]"
 
                     yield {
                         "event": "tool_done",
