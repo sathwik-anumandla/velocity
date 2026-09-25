@@ -71,6 +71,8 @@ services:
       - HINDSIGHT_API_URL=http://hindsight:8888
       - HINDSIGHT_BANK_ID=${HINDSIGHT_BANK_ID:-personal-agent}
       - SQLITE_DB_PATH=/app/data/velocity.db
+      - NIGHTLY_DREAM_UTC_HOUR=${NIGHTLY_DREAM_UTC_HOUR:-23}
+      - NIGHTLY_DREAM_UTC_MINUTE=${NIGHTLY_DREAM_UTC_MINUTE:-0}
     depends_on:
       - hindsight
 
