@@ -116,6 +116,7 @@ class ResponsesRunner:
         session_id: str,
         thinking_effort: str = "medium",
         verbosity: str = "low",
+        model: Optional[str] = None,
         is_temporary: bool = False,
         max_tool_hops: int = 5,
     ) -> AsyncGenerator[Dict[str, Any], None]:
@@ -125,7 +126,7 @@ class ResponsesRunner:
         """
         # Dynamically reload environment from .env if updated
         load_dotenv(override=True)
-        active_model = os.getenv("LLM_MODEL_ID", self.model).strip()
+        active_model = (model or os.getenv("LLM_MODEL_ID", self.model)).strip()
         active_api_key = os.getenv("OPENAI_API_KEY", self.api_key).strip()
         active_base_url = (os.getenv("OPENAI_BASE_URL", "") or "https://api.openai.com/v1").strip().rstrip("/")
         if active_api_key != self.api_key or active_base_url != self.base_url:
@@ -157,7 +158,7 @@ class ResponsesRunner:
             def make_stream():
                 # Reasoning effort & verbosity passed to Responses API
                 req_kwargs: Dict[str, Any] = {
-                    "model": self.model,
+                    "model": active_model,
                     "instructions": instructions,
                     "input": current_input,
                     "prompt_cache_key": prompt_cache_key,
@@ -170,13 +171,13 @@ class ResponsesRunner:
                 if verbosity in ("low", "medium", "high"):
                     req_kwargs["text"] = {"verbosity": verbosity}
 
-                logger.info(f"Invoking Responses API with model='{self.model}' (effort='{thinking_effort}', verbosity='{verbosity}', tools={[t['name'] for t in tools]})")
+                logger.info(f"Invoking Responses API with model='{active_model}' (effort='{thinking_effort}', verbosity='{verbosity}', tools={[t['name'] for t in tools]})")
                 try:
                     return self.client.responses.create(**req_kwargs)
                 except Exception as err:
                     # If the model does not support 'max', gracefully fallback to 'xhigh'
                     if ("reasoning.effort" in str(err) or "unsupported_value" in str(err)) and req_kwargs.get("reasoning", {}).get("effort") == "max":
-                        logger.info(f"Model '{self.model}' does not support effort='max', falling back to 'xhigh'")
+                        logger.info(f"Model '{active_model}' does not support effort='max', falling back to 'xhigh'")
                         req_kwargs["reasoning"] = {"effort": "xhigh"}
                         return self.client.responses.create(**req_kwargs)
                     raise err

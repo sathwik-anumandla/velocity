@@ -42,6 +42,7 @@ def init_db() -> None:
         recall_budget TEXT NOT NULL DEFAULT 'medium',
         thinking_effort TEXT NOT NULL DEFAULT 'medium',
         verbosity TEXT NOT NULL DEFAULT 'low',
+        model TEXT NOT NULL DEFAULT 'gpt-5.4-mini',
         summary TEXT DEFAULT NULL,
         last_tokens INTEGER DEFAULT 0,
         created_at TEXT NOT NULL,
@@ -58,6 +59,8 @@ def init_db() -> None:
         cursor.execute("ALTER TABLE sessions ADD COLUMN thinking_effort TEXT NOT NULL DEFAULT 'medium';")
     if "verbosity" not in existing_cols:
         cursor.execute("ALTER TABLE sessions ADD COLUMN verbosity TEXT NOT NULL DEFAULT 'low';")
+    if "model" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN model TEXT NOT NULL DEFAULT 'gpt-5.4-mini';")
     if "summary" not in existing_cols:
         cursor.execute("ALTER TABLE sessions ADD COLUMN summary TEXT DEFAULT NULL;")
     if "last_tokens" not in existing_cols:
@@ -124,6 +127,7 @@ def create_session(
     recall_budget: str = "medium",
     thinking_effort: str = "medium",
     verbosity: str = "low",
+    model: str = "gpt-5.4-mini",
 ) -> Dict[str, Any]:
     """
     Create a persistent named session. (Temporary sessions bypass SQLite entirely).
@@ -135,10 +139,10 @@ def create_session(
     cursor = conn.cursor()
     cursor.execute(
         """
-        INSERT INTO sessions (id, name, recall_budget, thinking_effort, verbosity, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sessions (id, name, recall_budget, thinking_effort, verbosity, model, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (session_id, session_name, recall_budget, thinking_effort, verbosity, now, now),
+        (session_id, session_name, recall_budget, thinking_effort, verbosity, model, now, now),
     )
     conn.commit()
     conn.close()
@@ -148,6 +152,7 @@ def create_session(
         "recall_budget": recall_budget,
         "thinking_effort": thinking_effort,
         "verbosity": verbosity,
+        "model": model,
         "created_at": now,
         "updated_at": now,
     }
@@ -159,6 +164,7 @@ def update_session(
     recall_budget: Optional[str] = None,
     thinking_effort: Optional[str] = None,
     verbosity: Optional[str] = None,
+    model: Optional[str] = None,
     summary: Optional[str] = None,
     last_tokens: Optional[int] = None,
 ) -> bool:
@@ -181,6 +187,9 @@ def update_session(
     if verbosity is not None:
         updates.append("verbosity = ?")
         params.append(verbosity)
+    if model is not None:
+        updates.append("model = ?")
+        params.append(model)
     if summary is not None:
         updates.append("summary = ?")
         params.append(summary)

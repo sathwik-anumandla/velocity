@@ -13,6 +13,7 @@ class ChatRequest(BaseModel):
     recall_budget: Optional[Literal["low", "medium", "high"]] = None
     thinking_effort: Optional[Literal["none", "low", "medium", "high", "xhigh", "max"]] = None
     verbosity: Optional[Literal["low", "medium", "high"]] = None
+    model: Optional[Literal["gpt-5.4-mini", "gpt-5.4"]] = None
     is_temporary: bool = False
 
 
@@ -22,6 +23,7 @@ class SessionCreate(BaseModel):
     recall_budget: Literal["low", "medium", "high"] = "medium"
     thinking_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "medium"
     verbosity: Literal["low", "medium", "high"] = "low"
+    model: Literal["gpt-5.4-mini", "gpt-5.4"] = "gpt-5.4-mini"
 
 
 class SessionUpdate(BaseModel):
@@ -29,6 +31,7 @@ class SessionUpdate(BaseModel):
     recall_budget: Optional[Literal["low", "medium", "high"]] = None
     thinking_effort: Optional[Literal["none", "low", "medium", "high", "xhigh", "max"]] = None
     verbosity: Optional[Literal["low", "medium", "high"]] = None
+    model: Optional[Literal["gpt-5.4-mini", "gpt-5.4"]] = None
 
 
 class SessionResponse(BaseModel):
@@ -37,6 +40,7 @@ class SessionResponse(BaseModel):
     recall_budget: str
     thinking_effort: str
     verbosity: str = "low"
+    model: str = "gpt-5.4-mini"
     created_at: str
     updated_at: str
 

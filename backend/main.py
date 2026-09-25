@@ -240,6 +240,7 @@ async def create_session(session_in: SessionCreate):
         recall_budget=session_in.recall_budget,
         thinking_effort=session_in.thinking_effort,
         verbosity=session_in.verbosity,
+        model=session_in.model or os.getenv("LLM_MODEL_ID", "gpt-5.4-mini"),
     )
     return SessionResponse(**sess)
 
@@ -272,7 +273,7 @@ async def get_session_details(session_id: str = Path(...)):
 @app.patch("/sessions/{session_id}", response_model=SessionResponse)
 async def update_session_meta(session_id: str, patch: SessionUpdate):
     """
-    Update session name or sticky settings (recall_budget, thinking_effort, verbosity).
+    Update session name or sticky settings (recall_budget, thinking_effort, verbosity, model).
     """
     session = db_get_session(session_id)
     if not session:
@@ -284,6 +285,7 @@ async def update_session_meta(session_id: str, patch: SessionUpdate):
         recall_budget=patch.recall_budget,
         thinking_effort=patch.thinking_effort,
         verbosity=patch.verbosity,
+        model=patch.model,
     )
     updated = db_get_session(session_id)
     return SessionResponse(**updated)
@@ -360,6 +362,7 @@ async def chat_stream(request: ChatRequest):
                 "recall_budget": request.recall_budget or "medium",
                 "thinking_effort": request.thinking_effort or "medium",
                 "verbosity": request.verbosity or "low",
+                "model": request.model or os.getenv("LLM_MODEL_ID", "gpt-5.4-mini"),
             }
         temp_state = temp_sessions[session_id]
         if request.recall_budget:
@@ -368,10 +371,13 @@ async def chat_stream(request: ChatRequest):
             temp_state["thinking_effort"] = request.thinking_effort
         if request.verbosity:
             temp_state["verbosity"] = request.verbosity
+        if request.model:
+            temp_state["model"] = request.model
 
         recall_budget = temp_state["recall_budget"]
         thinking_effort = temp_state["thinking_effort"]
         verbosity = temp_state.get("verbosity", "low")
+        model = temp_state.get("model") or os.getenv("LLM_MODEL_ID", "gpt-5.4-mini")
         history_messages = list(temp_state["messages"])
         current_summary = temp_state["summary"]
         last_tokens = temp_state["last_tokens"]
@@ -383,6 +389,7 @@ async def chat_stream(request: ChatRequest):
                 recall_budget=request.recall_budget or "medium",
                 thinking_effort=request.thinking_effort or "medium",
                 verbosity=request.verbosity or "low",
+                model=request.model or os.getenv("LLM_MODEL_ID", "gpt-5.4-mini"),
             )
 
         # Update sticky toggles if provided
@@ -393,6 +400,8 @@ async def chat_stream(request: ChatRequest):
             to_update["thinking_effort"] = request.thinking_effort
         if request.verbosity and request.verbosity != session.get("verbosity"):
             to_update["verbosity"] = request.verbosity
+        if request.model and request.model != session.get("model"):
+            to_update["model"] = request.model
         if to_update:
             db_update_session(session_id, **to_update)
             session = db_get_session(session_id)
@@ -400,6 +409,7 @@ async def chat_stream(request: ChatRequest):
         recall_budget = session["recall_budget"]
         thinking_effort = session["thinking_effort"]
         verbosity = session.get("verbosity", "low")
+        model = session.get("model") or request.model or os.getenv("LLM_MODEL_ID", "gpt-5.4-mini")
         history_messages = db_get_messages(session_id)
         current_summary = session.get("summary")
         last_tokens = session.get("last_tokens") or 0
@@ -491,6 +501,7 @@ async def chat_stream(request: ChatRequest):
             session_id=session_id,
             thinking_effort=thinking_effort,
             verbosity=verbosity,
+            model=model,
             is_temporary=is_temp,
         ):
             ev = sse_item["event"]

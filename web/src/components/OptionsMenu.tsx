@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import type { FC } from 'react';
-import type { ThinkingEffort, RecallBudget, Verbosity } from '../types';
+import type { ThinkingEffort, RecallBudget, Verbosity, SupportedModel } from '../types';
 
 interface OptionsMenuProps {
   isOpen: boolean;
   onClose: () => void;
+  selectedModel: SupportedModel;
   thinkingEffort: ThinkingEffort;
   recallBudget: RecallBudget;
   verbosity: Verbosity;
+  onUpdateModel: (model: SupportedModel) => void;
   onUpdateEffort: (effort: ThinkingEffort) => void;
   onUpdateRecall: (budget: RecallBudget) => void;
   onUpdateVerbosity: (verbosity: Verbosity) => void;
@@ -16,14 +18,16 @@ interface OptionsMenuProps {
 export const OptionsMenu: FC<OptionsMenuProps> = ({
   isOpen,
   onClose,
+  selectedModel,
   thinkingEffort,
   recallBudget,
   verbosity,
+  onUpdateModel,
   onUpdateEffort,
   onUpdateRecall,
   onUpdateVerbosity,
 }) => {
-  const [activeSubMenu, setActiveSubMenu] = useState<'effort' | 'recall' | 'verbosity' | null>(null);
+  const [activeSubMenu, setActiveSubMenu] = useState<'model' | 'effort' | 'recall' | 'verbosity' | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   // Click-outside listener
@@ -47,6 +51,19 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
+
+  const getModelLabel = (m: SupportedModel) => {
+    return m === 'gpt-5.4-mini' ? '5.4 mini' : '5.4';
+  };
+
+  const getModelDescription = (m: SupportedModel) => {
+    switch (m) {
+      case 'gpt-5.4-mini':
+        return 'Fast and lightweight daily driver for swift responses.';
+      case 'gpt-5.4':
+        return 'Flagship intelligence for deep reasoning and complex architecture.';
+    }
+  };
 
   const getEffortDescription = (effort: ThinkingEffort) => {
     switch (effort) {
@@ -97,6 +114,19 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
         <div className="flex flex-col space-y-0.5">
           <button
             type="button"
+            onClick={() => setActiveSubMenu('model')}
+            className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-[var(--bg-popover-item-hover)] transition-colors text-left group"
+          >
+            <span className="text-[13.5px] font-medium text-[var(--text-primary)]">model</span>
+            <span className="text-xs font-mono font-medium text-[var(--text-muted)] lowercase">
+              {getModelLabel(selectedModel)}
+            </span>
+          </button>
+
+          <div className="h-[1px] bg-zinc-500/10 dark:bg-white/5 mx-2" />
+
+          <button
+            type="button"
             onClick={() => setActiveSubMenu('effort')}
             className="flex items-center justify-between w-full px-3 py-2.5 rounded-xl hover:bg-[var(--bg-popover-item-hover)] transition-colors text-left group"
           >
@@ -139,9 +169,35 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
             </button>
             <span className="text-[13px] font-semibold text-[var(--text-primary)] capitalize">{activeSubMenu}</span>
             <span className="text-[11px] font-mono font-bold text-[var(--text-secondary)] uppercase">
-              {activeSubMenu === 'effort' ? thinkingEffort : activeSubMenu === 'recall' ? recallBudget : verbosity}
+              {activeSubMenu === 'model'
+                ? getModelLabel(selectedModel)
+                : activeSubMenu === 'effort'
+                ? thinkingEffort
+                : activeSubMenu === 'recall'
+                ? recallBudget
+                : verbosity}
             </span>
           </div>
+
+          {/* Model Options: 2 Columns */}
+          {activeSubMenu === 'model' && (
+            <div className="grid grid-cols-2 gap-1 bg-[var(--bg-modal-inner)] p-1 rounded-xl">
+              {(['gpt-5.4-mini', 'gpt-5.4'] as SupportedModel[]).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => onUpdateModel(m)}
+                  className={`py-1.5 text-xs font-medium rounded-lg transition-all ${
+                    selectedModel === m
+                      ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] font-semibold shadow-sm'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                  }`}
+                >
+                  {m === 'gpt-5.4-mini' ? '5.4 Mini' : '5.4'}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Effort Options: 2 Rows of 3 */}
           {activeSubMenu === 'effort' && (
@@ -222,7 +278,9 @@ export const OptionsMenu: FC<OptionsMenuProps> = ({
           )}
 
           <p className="mt-2.5 px-1 text-[11.5px] leading-relaxed text-[var(--text-muted)] font-sans">
-            {activeSubMenu === 'effort'
+            {activeSubMenu === 'model'
+              ? getModelDescription(selectedModel)
+              : activeSubMenu === 'effort'
               ? getEffortDescription(thinkingEffort)
               : activeSubMenu === 'recall'
               ? getRecallDescription(recallBudget)

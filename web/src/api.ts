@@ -1,4 +1,4 @@
-import type { Session, ChatMessage, SearchResult, RecallBudget, ThinkingEffort, Verbosity } from './types';
+import type { Session, ChatMessage, SearchResult, RecallBudget, ThinkingEffort, Verbosity, SupportedModel } from './types';
 
 const API_BASE = ''; // relative URL, handled by Vite proxy in dev and FastAPI mount in prod
 
@@ -53,6 +53,7 @@ export async function createSession(params?: {
   recall_budget?: RecallBudget;
   thinking_effort?: ThinkingEffort;
   verbosity?: Verbosity;
+  model?: SupportedModel;
 }): Promise<Session> {
   const res = await fetch(`${API_BASE}/sessions`, {
     method: 'POST',
@@ -62,6 +63,7 @@ export async function createSession(params?: {
       recall_budget: params?.recall_budget || 'medium',
       thinking_effort: params?.thinking_effort || 'medium',
       verbosity: params?.verbosity || 'low',
+      model: params?.model || 'gpt-5.4-mini',
     }),
   });
   if (!res.ok) throw new Error(`Failed to create session: ${res.status}`);
@@ -75,6 +77,7 @@ export async function updateSession(
     recall_budget?: RecallBudget;
     thinking_effort?: ThinkingEffort;
     verbosity?: Verbosity;
+    model?: SupportedModel;
   }
 ): Promise<Session> {
   const res = await fetch(`${API_BASE}/sessions/${sessionId}`, {
@@ -146,6 +149,7 @@ export async function streamChatTurn(
     recallBudget?: RecallBudget;
     thinkingEffort?: ThinkingEffort;
     verbosity?: Verbosity;
+    model?: SupportedModel;
     isTemporary?: boolean;
   },
   handlers: StreamChatHandlers,
@@ -161,6 +165,7 @@ export async function streamChatTurn(
       recall_budget: params.recallBudget,
       thinking_effort: params.thinkingEffort,
       verbosity: params.verbosity,
+      model: params.model,
       is_temporary: params.isTemporary || false,
     }),
     signal,

@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Plus, ArrowUp, Square, PanelLeft, Ghost, ArrowDown } from 'lucide-react';
-import type { Session, ChatMessage, ThinkingEffort, RecallBudget, Verbosity } from './types';
+import type { Session, ChatMessage, ThinkingEffort, RecallBudget, Verbosity, SupportedModel } from './types';
 import * as api from './api';
 import { Sidebar } from './components/Sidebar';
 import { OptionsMenu } from './components/OptionsMenu';
 import { ChatMessageView } from './components/ChatMessageView';
 import { SearchModal } from './components/SearchModal';
 import { MemoryInspectorModal } from './components/MemoryInspectorModal';
+import { getGreetingForCurrentTime } from './utils/greetings';
 
 export function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -20,6 +21,9 @@ export function App() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
+
+  // Dynamic Greeting state (contextual by time of day, shuffle-able)
+  const [greeting, setGreeting] = useState<string>(() => getGreetingForCurrentTime());
 
   // Dark/Light Theme state
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -44,6 +48,9 @@ export function App() {
 
   // Options Popover & Toggles
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<SupportedModel>(() => {
+    return (localStorage.getItem('velocity-preferred-model') as SupportedModel) || 'gpt-5.4-mini';
+  });
   const [thinkingEffort, setThinkingEffort] = useState<ThinkingEffort>('medium');
   const [recallBudget, setRecallBudget] = useState<RecallBudget>('medium');
   const [verbosity, setVerbosity] = useState<Verbosity>('low');
@@ -83,6 +90,7 @@ export function App() {
             const targetSession = loadedSessions.find((s) => s.id === targetId);
             setCurrentSessionId(targetId);
             if (targetSession) {
+              setSelectedModel(targetSession.model || 'gpt-5.4-mini');
               setThinkingEffort(targetSession.thinking_effort || 'medium');
               setRecallBudget(targetSession.recall_budget || 'medium');
               setVerbosity(targetSession.verbosity || 'low');
@@ -125,6 +133,7 @@ export function App() {
     setMessages([]);
     setIsTemporary(false);
     setIsUserScrolledUp(false);
+    setGreeting((prev) => getGreetingForCurrentTime(prev));
     setTimeout(() => {
       textareaRef.current?.focus();
     }, 50);
@@ -138,6 +147,7 @@ export function App() {
     setCurrentSessionId(null);
     setMessages([]);
     setIsUserScrolledUp(false);
+    setGreeting((prev) => getGreetingForCurrentTime(prev));
     setTimeout(() => {
       textareaRef.current?.focus();
     }, 50);
@@ -224,6 +234,7 @@ export function App() {
     setIsUserScrolledUp(false);
     const session = sessions.find((s) => s.id === sessionId);
     if (session) {
+      setSelectedModel(session.model || 'gpt-5.4-mini');
       setThinkingEffort(session.thinking_effort || 'medium');
       setRecallBudget(session.recall_budget || 'medium');
       setVerbosity(session.verbosity || 'low');
@@ -268,6 +279,19 @@ export function App() {
   };
 
   // Options Handlers (Sticky)
+  const handleUpdateModel = async (newModel: SupportedModel) => {
+    setSelectedModel(newModel);
+    localStorage.setItem('velocity-preferred-model', newModel);
+    if (currentSessionId && !isTemporary) {
+      try {
+        const updated = await api.updateSession(currentSessionId, { model: newModel });
+        setSessions((prev) => prev.map((s) => (s.id === currentSessionId ? updated : s)));
+      } catch (err) {
+        console.error('Failed to update model:', err);
+      }
+    }
+  };
+
   const handleUpdateEffort = async (newEffort: ThinkingEffort) => {
     setThinkingEffort(newEffort);
     if (currentSessionId && !isTemporary) {
@@ -318,6 +342,7 @@ export function App() {
             recall_budget: recallBudget,
             thinking_effort: thinkingEffort,
             verbosity: verbosity,
+            model: selectedModel,
           });
           setSessions((prev) => [newSess, ...prev]);
           setCurrentSessionId(newSess.id);
@@ -379,6 +404,7 @@ export function App() {
           recallBudget,
           thinkingEffort,
           verbosity,
+          model: selectedModel,
           isTemporary,
         },
         {
@@ -553,6 +579,7 @@ export function App() {
   // Is options button highlighted (any non-default values)?
   const isOptionsHighlighted =
     isOptionsOpen ||
+    selectedModel !== 'gpt-5.4-mini' ||
     thinkingEffort !== 'medium' ||
     recallBudget !== 'medium' ||
     verbosity !== 'low';
@@ -564,9 +591,11 @@ export function App() {
       <OptionsMenu
         isOpen={isOptionsOpen}
         onClose={() => setIsOptionsOpen(false)}
+        selectedModel={selectedModel}
         thinkingEffort={thinkingEffort}
         recallBudget={recallBudget}
         verbosity={verbosity}
+        onUpdateModel={handleUpdateModel}
         onUpdateEffort={handleUpdateEffort}
         onUpdateRecall={handleUpdateRecall}
         onUpdateVerbosity={handleUpdateVerbosity}
@@ -708,8 +737,12 @@ export function App() {
           /* Centered greeting and input bar above middle of screen */
           <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-8 select-none">
             <div className="w-full max-w-2xl sm:max-w-3xl flex flex-col items-center -translate-y-8">
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-8 text-center font-sans">
-                How can I help you today?
+              <h1
+                onClick={() => setGreeting((prev) => getGreetingForCurrentTime(prev))}
+                title="Click to shuffle greeting"
+                className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-8 text-center font-sans cursor-pointer hover:opacity-80 active:scale-[0.99] transition-all"
+              >
+                {greeting}
               </h1>
               {renderInputCapsule(true)}
             </div>

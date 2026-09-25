@@ -1,6 +1,7 @@
 export type ThinkingEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 export type RecallBudget = 'low' | 'medium' | 'high';
 export type Verbosity = 'low' | 'medium' | 'high';
+export type SupportedModel = 'gpt-5.4-mini' | 'gpt-5.4';
 
 export interface Session {
   id: string;
@@ -8,6 +9,7 @@ export interface Session {
   recall_budget: RecallBudget;
   thinking_effort: ThinkingEffort;
   verbosity: Verbosity;
+  model?: SupportedModel;
   created_at: string;
   updated_at: string;
   is_temporary?: boolean;
