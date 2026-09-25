@@ -34,7 +34,7 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
             "Synthesize strictly in English. Discard any non-English text or web scraping noise."
         ),
         "trigger": {
-            "refresh_cron": "0 3 * * *",
+            "refresh_cron": "15 23 * * *",
         },
     },
     {
@@ -49,7 +49,7 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
             "Synthesize strictly in English. Discard any non-English text or web scraping noise."
         ),
         "trigger": {
-            "refresh_cron": "0 3 * * *",
+            "refresh_cron": "15 23 * * *",
         },
     },
     {
@@ -65,7 +65,7 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
             "Ignore non-English text, web scraping artifacts, and third-party forum content."
         ),
         "trigger": {
-            "refresh_cron": "0 3 * * *",
+            "refresh_cron": "15 23 * * *",
         },
     },
     {
@@ -77,7 +77,7 @@ FOUNDATIONAL_MENTAL_MODELS: List[Dict[str, Any]] = [
             "Synthesize strictly in English."
         ),
         "trigger": {
-            "refresh_cron": "0 3 * * *",
+            "refresh_cron": "15 23 * * *",
         },
     },
 ]

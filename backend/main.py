@@ -10,7 +10,7 @@ import uuid
 import json
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel
@@ -40,7 +40,7 @@ from backend.schemas import (
     MessageResponse,
     SearchResult,
 )
-from backend.hindsight import HindsightClient
+from backend.hindsight import HindsightClient, FOUNDATIONAL_MENTAL_MODELS
 from backend.prompt import (
     compose_responses_input,
     evaluate_summarization_waterfall,
@@ -105,6 +105,74 @@ hindsight_client = HindsightClient()
 responses_runner = ResponsesRunner(hindsight=hindsight_client)
 
 
+async def execute_dream_cycle(hindsight: HindsightClient) -> Dict[str, Any]:
+    """
+    Executes a complete dreaming pass:
+    1. Triggers Hindsight memory consolidation to extract observations from retained facts.
+    2. Waits 90s for consolidation worker batches to commit.
+    3. Refreshes all 4 foundational mental models so they synthesize from fresh observations.
+    """
+    logger.info("[Dream Cycle] Starting offline memory consolidation...")
+    consolidate_ok = await asyncio.to_thread(hindsight.consolidate)
+    logger.info(f"[Dream Cycle] Consolidation request dispatched: success={consolidate_ok}")
+
+    logger.info("[Dream Cycle] Waiting 90s for observation consolidation to settle in Hindsight...")
+    await asyncio.sleep(90)
+
+    results = {}
+    logger.info("[Dream Cycle] Refreshing foundational mental models with fresh observations...")
+    for model in FOUNDATIONAL_MENTAL_MODELS:
+        model_id = model["id"]
+        op_id = await asyncio.to_thread(hindsight.refresh_mental_model, model_id)
+        results[model_id] = op_id or "error"
+        logger.info(f"[Dream Cycle] Mental model '{model_id}' refresh triggered (op: {op_id})")
+
+    logger.info("[Dream Cycle] Nightly dreaming cycle finished successfully.")
+    return {
+        "consolidation": "dispatched" if consolidate_ok else "failed",
+        "mental_models": results,
+    }
+
+
+async def run_nightly_dream_scheduler(hindsight: HindsightClient):
+    """
+    Continuous background loop that schedules the dreaming cycle every day at 23:00 UTC (04:30 AM IST).
+    Hour is configurable via NIGHTLY_DREAM_UTC_HOUR environment variable (default: 23).
+    """
+    target_hour = int(os.getenv("NIGHTLY_DREAM_UTC_HOUR", "23"))
+    target_minute = int(os.getenv("NIGHTLY_DREAM_UTC_MINUTE", "0"))
+    ist_hour = (target_hour + 5 + (target_minute + 30) // 60) % 24
+    ist_minute = (target_minute + 30) % 60
+    logger.info(f"[Dream Scheduler] Active. Target: {target_hour:02d}:{target_minute:02d} UTC ({ist_hour:02d}:{ist_minute:02d} IST).")
+
+    while True:
+        try:
+            now_utc = datetime.now(timezone.utc)
+            target_utc = now_utc.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+            if now_utc >= target_utc:
+                target_utc += timedelta(days=1)
+
+            sleep_seconds = (target_utc - now_utc).total_seconds()
+            hours_left = int(sleep_seconds // 3600)
+            mins_left = int((sleep_seconds % 3600) // 60)
+            logger.info(f"[Dream Scheduler] Next dream cycle scheduled at {target_utc.isoformat()} (in {hours_left}h {mins_left}m).")
+
+            await asyncio.sleep(sleep_seconds)
+
+            # Wake up and execute dream cycle
+            await execute_dream_cycle(hindsight)
+
+            # Sleep 60 seconds buffer to avoid double triggering in the same minute
+            await asyncio.sleep(60)
+
+        except asyncio.CancelledError:
+            logger.info("[Dream Scheduler] Background task cancelled for server shutdown.")
+            break
+        except Exception as e:
+            logger.error(f"[Dream Scheduler] Unexpected error in scheduler loop: {e}", exc_info=True)
+            await asyncio.sleep(300)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Ensure local data directories and SQLite database exist
@@ -118,8 +186,16 @@ async def lifespan(app: FastAPI):
     # Bootstrap Hindsight memory bank & foundational mental models in the background
     asyncio.create_task(asyncio.to_thread(hindsight_client.bootstrap_memory_bank))
 
+    # Launch automated nightly dreaming scheduler (23:00 UTC / 04:30 AM IST)
+    dream_task = asyncio.create_task(run_nightly_dream_scheduler(hindsight_client))
+
     yield
     # Shutdown
+    dream_task.cancel()
+    try:
+        await dream_task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(
@@ -646,6 +722,19 @@ async def trigger_consolidation_endpoint():
     success = await asyncio.to_thread(hindsight_client.consolidate)
     return {
         "status": "triggered" if success else "error"
+    }
+
+
+@app.post("/memory/dream")
+async def trigger_dream_endpoint():
+    """
+    Manually triggers an immediate dreaming pass (consolidation followed by mental model refresh)
+    in the background.
+    """
+    asyncio.create_task(execute_dream_cycle(hindsight_client))
+    return {
+        "status": "triggered",
+        "message": "Nightly dream cycle (consolidation followed by mental model refresh) started in background."
     }
 
 
