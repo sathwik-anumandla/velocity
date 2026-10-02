@@ -40,7 +40,7 @@ from backend.schemas import (
     MessageResponse,
     SearchResult,
 )
-from backend.hindsight import HindsightClient, FOUNDATIONAL_MENTAL_MODELS
+from backend.hindsight import HindsightClient
 from backend.prompt import (
     compose_responses_input,
     evaluate_summarization_waterfall,
@@ -107,30 +107,20 @@ responses_runner = ResponsesRunner(hindsight=hindsight_client)
 
 async def execute_dream_cycle(hindsight: HindsightClient) -> Dict[str, Any]:
     """
-    Executes a complete dreaming pass:
-    1. Triggers Hindsight memory consolidation to extract observations from retained facts.
-    2. Waits 90s for consolidation worker batches to commit.
-    3. Refreshes all 4 foundational mental models so they synthesize from fresh observations.
+    Executes the nightly dreaming pass:
+    Triggers Hindsight memory consolidation to extract observations from retained facts.
+    Since foundational mental models are configured with 'refresh_after_consolidation: True',
+    Hindsight automatically refreshes each mental model upon consolidation completion.
     """
-    logger.info("[Dream Cycle] Starting offline memory consolidation...")
+    logger.info("[Dream Cycle] Starting scheduled offline memory consolidation...")
     consolidate_ok = await asyncio.to_thread(hindsight.consolidate)
-    logger.info(f"[Dream Cycle] Consolidation request dispatched: success={consolidate_ok}")
-
-    logger.info("[Dream Cycle] Waiting 90s for observation consolidation to settle in Hindsight...")
-    await asyncio.sleep(90)
-
-    results = {}
-    logger.info("[Dream Cycle] Refreshing foundational mental models with fresh observations...")
-    for model in FOUNDATIONAL_MENTAL_MODELS:
-        model_id = model["id"]
-        op_id = await asyncio.to_thread(hindsight.refresh_mental_model, model_id)
-        results[model_id] = op_id or "error"
-        logger.info(f"[Dream Cycle] Mental model '{model_id}' refresh triggered (op: {op_id})")
-
-    logger.info("[Dream Cycle] Nightly dreaming cycle finished successfully.")
+    logger.info(
+        f"[Dream Cycle] Consolidation request dispatched: success={consolidate_ok}. "
+        "Mental models will auto-refresh natively in Hindsight once consolidation completes."
+    )
     return {
         "consolidation": "dispatched" if consolidate_ok else "failed",
-        "mental_models": results,
+        "mental_models": "auto_after_consolidation",
     }
 
 
