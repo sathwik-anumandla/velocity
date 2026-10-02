@@ -52,6 +52,8 @@ class MessageResponse(BaseModel):
     content: str
     memory_status: str
     created_at: str
+    thread_id: Optional[str] = None
+    thread_proposal: Optional[str] = None
 
 
 class SearchResult(BaseModel):
@@ -63,3 +65,36 @@ class SearchResult(BaseModel):
     memory_status: str
     created_at: str
     snippet: str
+
+
+class ThreadCreate(BaseModel):
+    name: str
+    parent_message_id: Optional[str] = None
+    parent_session_id: str = "main"
+    model: str = "gpt-5.4-mini"
+    initial_summary: Optional[str] = None
+
+
+class ThreadUpdate(BaseModel):
+    name: Optional[str] = None
+    status: Optional[str] = None
+    rollup_summary: Optional[str] = None
+
+
+class ThreadResponse(BaseModel):
+    id: str
+    name: str
+    is_thread: int = 1
+    parent_session_id: Optional[str] = None
+    parent_message_id: Optional[str] = None
+    status: str
+    rollup_summary: Optional[str] = None
+    model: str = "gpt-5.4-mini"
+    created_at: str
+    updated_at: str
+    message_count: Optional[int] = 0
+
+
+class ProposalResponseAction(BaseModel):
+    action: Literal["accept", "decline"]
+

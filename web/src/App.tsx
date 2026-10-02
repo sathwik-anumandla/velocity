@@ -1,8 +1,27 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Plus, ArrowUp, Square, PanelLeft, Ghost, ArrowDown } from 'lucide-react';
-import type { Session, ChatMessage, ThinkingEffort, RecallBudget, Verbosity, SupportedModel } from './types';
+import {
+  ArrowUp,
+  Square,
+  Ghost,
+  ArrowDown,
+  ArrowLeft,
+  GitBranch,
+  CheckCircle2,
+  RotateCcw,
+  Sparkles,
+  Plus,
+} from 'lucide-react';
+import type {
+  ChatMessage,
+  ThinkingEffort,
+  RecallBudget,
+  Verbosity,
+  SupportedModel,
+  ActiveFlyout,
+  ThreadItem,
+} from './types';
 import * as api from './api';
-import { Sidebar } from './components/Sidebar';
+import { NavigationRail } from './components/NavigationRail';
 import { OptionsMenu } from './components/OptionsMenu';
 import { ChatMessageView } from './components/ChatMessageView';
 import { SearchModal } from './components/SearchModal';
@@ -10,19 +29,22 @@ import { MemoryInspectorModal } from './components/MemoryInspectorModal';
 import { getGreetingForCurrentTime } from './utils/greetings';
 
 export function App() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  // Session & Thread state: default to 'main' lifelong continuous timeline
+  const [currentSessionId, setCurrentSessionId] = useState<string>('main');
+  const [activeThread, setActiveThread] = useState<ThreadItem | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isBackendOnline, setIsBackendOnline] = useState(true);
   const [healthDetails, setHealthDetails] = useState<api.HealthDetails | null>(null);
   const [isTemporary, setIsTemporary] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Navigation Rail & Flyouts
+  const [activeFlyout, setActiveFlyout] = useState<ActiveFlyout>('none');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
 
-  // Dynamic Greeting state (contextual by time of day, shuffle-able)
+  // Dynamic Greeting state (contextual by time of day)
   const [greeting, setGreeting] = useState<string>(() => getGreetingForCurrentTime());
 
   // Dark/Light Theme state
@@ -61,143 +83,6 @@ export function App() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // 1. Initial Load & Health Polling
-  useEffect(() => {
-    let mounted = true;
-
-    async function init() {
-      const health = await api.getHealthDetails();
-      if (!mounted) return;
-      setIsBackendOnline(health.status === 'ok');
-      setHealthDetails(health);
-
-      try {
-        const loadedSessions = await api.listSessions();
-        if (!mounted) return;
-        setSessions(loadedSessions);
-
-        const savedActive = localStorage.getItem('velocity-active-session');
-        if (savedActive === 'new' || (!savedActive && loadedSessions.length === 0)) {
-          setCurrentSessionId(null);
-          setMessages([]);
-          setIsTemporary(false);
-        } else {
-          const targetId = (savedActive && loadedSessions.some((s) => s.id === savedActive))
-            ? savedActive
-            : loadedSessions[0]?.id;
-
-          if (targetId) {
-            const targetSession = loadedSessions.find((s) => s.id === targetId);
-            setCurrentSessionId(targetId);
-            if (targetSession) {
-              setSelectedModel(targetSession.model || 'gpt-5.4-mini');
-              setThinkingEffort(targetSession.thinking_effort || 'medium');
-              setRecallBudget(targetSession.recall_budget || 'medium');
-              setVerbosity(targetSession.verbosity || 'low');
-            }
-            const { messages: history } = await api.getSessionMessages(targetId);
-            if (mounted) setMessages(history);
-          } else {
-            setCurrentSessionId(null);
-            setMessages([]);
-            setIsTemporary(false);
-          }
-        }
-      } catch (e) {
-        console.error('Initialization error:', e);
-      }
-    }
-
-    init();
-
-    // Check health periodically
-    const interval = setInterval(async () => {
-      const health = await api.getHealthDetails();
-      if (mounted) {
-        setIsBackendOnline(health.status === 'ok');
-        setHealthDetails(health);
-      }
-    }, 8000);
-
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Prepare blank new chat without saving to SQLite until user sends prompt
-  const handleNewChat = useCallback(() => {
-    if (isStreaming) return;
-    localStorage.setItem('velocity-active-session', 'new');
-    setCurrentSessionId(null);
-    setMessages([]);
-    setIsTemporary(false);
-    setIsUserScrolledUp(false);
-    setGreeting((prev) => getGreetingForCurrentTime(prev));
-    setTimeout(() => {
-      textareaRef.current?.focus();
-    }, 50);
-  }, [isStreaming]);
-
-  // Toggle temporary chat on new chat page (always stays on new chat page)
-  const handleToggleTempChat = useCallback(() => {
-    if (isStreaming) return;
-    localStorage.setItem('velocity-active-session', 'new');
-    setIsTemporary((prev) => !prev);
-    setCurrentSessionId(null);
-    setMessages([]);
-    setIsUserScrolledUp(false);
-    setGreeting((prev) => getGreetingForCurrentTime(prev));
-    setTimeout(() => {
-      textareaRef.current?.focus();
-    }, 50);
-  }, [isStreaming]);
-
-  // Global keyboard shortcuts: ⌘K (Search), ⌘⇧O (New Chat), ⌘B (Sidebar toggle), ⌘M (Memory Inspector), Esc (Dismiss)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const isMeta = e.metaKey || e.ctrlKey;
-
-      // 1. Cmd/Ctrl + K: Search
-      if (isMeta && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setIsSearchOpen((prev) => !prev);
-        return;
-      }
-
-      // 2. Cmd/Ctrl + Shift + O: New Chat
-      if (isMeta && e.shiftKey && e.key.toLowerCase() === 'o') {
-        e.preventDefault();
-        handleNewChat();
-        return;
-      }
-
-      // 3. Cmd/Ctrl + B: Toggle Sidebar
-      if (isMeta && e.key.toLowerCase() === 'b') {
-        e.preventDefault();
-        setSidebarOpen((prev) => !prev);
-        return;
-      }
-
-      // 4. Cmd/Ctrl + M: Toggle Memory Inspector
-      if (isMeta && e.key.toLowerCase() === 'm') {
-        e.preventDefault();
-        setIsMemoryInspectorOpen((prev) => !prev);
-        return;
-      }
-
-      // 5. Escape: Close search modal, options popover, or memory inspector
-      if (e.key === 'Escape') {
-        setIsSearchOpen(false);
-        setIsOptionsOpen(false);
-        setIsMemoryInspectorOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNewChat]);
-
   // Scroll handler to track when user deliberately scrolls up away from bottom
   const handleScroll = useCallback(() => {
     if (!chatScrollRef.current) return;
@@ -206,12 +91,10 @@ export function App() {
     setIsUserScrolledUp(distanceFromBottom > 120);
   }, []);
 
-  // Scroll to bottom helper (respects user scroll position unless forced)
+  // Scroll to bottom helper
   const scrollToBottom = useCallback((force: boolean = false) => {
     if (chatScrollRef.current) {
-      if (!force && isUserScrolledUp) {
-        return;
-      }
+      if (!force && isUserScrolledUp) return;
       chatScrollRef.current.scrollTo({
         top: chatScrollRef.current.scrollHeight,
         behavior: 'smooth',
@@ -225,58 +108,155 @@ export function App() {
     }
   }, [messages, isUserScrolledUp, scrollToBottom]);
 
-  // Switch session
-  const handleSelectSession = async (sessionId: string) => {
+  // Switch session: loads history for 'main' timeline or specific thread
+  const handleSelectSession = useCallback(async (sessionId: string) => {
     if (isStreaming) return;
-    localStorage.setItem('velocity-active-session', sessionId);
-    setCurrentSessionId(sessionId);
+    const target = sessionId || 'main';
+    localStorage.setItem('velocity-active-session', target);
+    setCurrentSessionId(target);
     setIsTemporary(false);
     setIsUserScrolledUp(false);
-    const session = sessions.find((s) => s.id === sessionId);
-    if (session) {
-      setSelectedModel(session.model || 'gpt-5.4-mini');
-      setThinkingEffort(session.thinking_effort || 'medium');
-      setRecallBudget(session.recall_budget || 'medium');
-      setVerbosity(session.verbosity || 'low');
+
+    if (target !== 'main') {
+      try {
+        const thread = await api.getThread(target);
+        setActiveThread(thread);
+      } catch {
+        setActiveThread(null);
+      }
+    } else {
+      setActiveThread(null);
     }
 
     try {
-      const { messages: history } = await api.getSessionMessages(sessionId);
+      const { session, messages: history } = await api.getSessionMessages(target);
+      if (session) {
+        setSelectedModel(session.model || 'gpt-5.4-mini');
+        setThinkingEffort(session.thinking_effort || 'medium');
+        setRecallBudget(session.recall_budget || 'medium');
+        setVerbosity(session.verbosity || 'low');
+      }
       setMessages(history);
       setTimeout(() => scrollToBottom(true), 50);
     } catch (err) {
       console.error('Failed to load session messages:', err);
+      setMessages([]);
     }
-  };
+  }, [isStreaming, scrollToBottom]);
 
-  // Delete session
-  const handleDeleteSession = async (sessionId: string) => {
+  // 1. Initial Load & Health Polling
+  useEffect(() => {
+    let mounted = true;
+
+    async function init() {
+      const health = await api.getHealthDetails();
+      if (!mounted) return;
+      setIsBackendOnline(health.status === 'ok');
+      setHealthDetails(health);
+
+      const savedActive = localStorage.getItem('velocity-active-session') || 'main';
+      handleSelectSession(savedActive);
+    }
+
+    init();
+
+    const interval = setInterval(async () => {
+      const health = await api.getHealthDetails();
+      if (mounted) {
+        setIsBackendOnline(health.status === 'ok');
+        setHealthDetails(health);
+      }
+    }, 8000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [handleSelectSession]);
+
+  // Handle user responding to a side chat proposal card
+  const handleRespondProposal = useCallback(async (messageId: string, action: 'accept' | 'decline') => {
     try {
-      await api.deleteSession(sessionId);
-      const remaining = sessions.filter((s) => s.id !== sessionId);
-      setSessions(remaining);
-
-      if (currentSessionId === sessionId) {
-        if (remaining.length > 0) {
-          handleSelectSession(remaining[0].id);
-        } else {
-          handleNewChat();
-        }
+      const res = await api.respondToThreadProposal(messageId, action);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, thread_proposal: res.proposal } : m
+        )
+      );
+      if (action === 'accept' && res.thread) {
+        handleSelectSession(res.thread.id);
       }
     } catch (err) {
-      console.error('Failed to delete session:', err);
+      console.error('Failed to respond to proposal:', err);
     }
-  };
+  }, [handleSelectSession]);
 
-  // Rename session
-  const handleRenameSession = async (sessionId: string, newName: string) => {
+  // Conclude active side chat
+  const handleConcludeActiveThread = useCallback(async () => {
+    if (!activeThread) return;
     try {
-      const updated = await api.updateSession(sessionId, { name: newName });
-      setSessions((prev) => prev.map((s) => (s.id === sessionId ? updated : s)));
+      await api.triggerThreadRollup(activeThread.id, true);
+      setActiveThread((prev) => (prev ? { ...prev, status: 'concluded' } : null));
     } catch (err) {
-      console.error('Failed to rename session:', err);
+      console.error('Failed to conclude side chat:', err);
     }
-  };
+  }, [activeThread]);
+
+  // Reopen active side chat
+  const handleReopenActiveThread = useCallback(async () => {
+    if (!activeThread) return;
+    try {
+      await api.updateThread(activeThread.id, { status: 'active' });
+      setActiveThread((prev) => (prev ? { ...prev, status: 'active' } : null));
+    } catch (err) {
+      console.error('Failed to reopen side chat:', err);
+    }
+  }, [activeThread]);
+
+  // Trigger rollup synthesis manually
+  const handleRollupActiveThread = useCallback(async () => {
+    if (!activeThread) return;
+    try {
+      await api.triggerThreadRollup(activeThread.id, false);
+    } catch (err) {
+      console.error('Failed to trigger rollup:', err);
+    }
+  }, [activeThread]);
+
+  // Toggle temporary scratch turn
+  const handleToggleTempChat = useCallback(() => {
+    if (isStreaming) return;
+    setIsTemporary((prev) => !prev);
+  }, [isStreaming]);
+
+  // Global keyboard shortcuts: ⌘K (Search), ⌘M (Memory Inspector), Esc (Dismiss)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+
+      if (isMeta && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsSearchOpen((prev) => !prev);
+        return;
+      }
+
+      if (isMeta && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        setIsMemoryInspectorOpen((prev) => !prev);
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        setIsSearchOpen(false);
+        setIsOptionsOpen(false);
+        setIsMemoryInspectorOpen(false);
+        setActiveFlyout('none');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Options Handlers (Sticky)
   const handleUpdateModel = async (newModel: SupportedModel) => {
@@ -284,8 +264,7 @@ export function App() {
     localStorage.setItem('velocity-preferred-model', newModel);
     if (currentSessionId && !isTemporary) {
       try {
-        const updated = await api.updateSession(currentSessionId, { model: newModel });
-        setSessions((prev) => prev.map((s) => (s.id === currentSessionId ? updated : s)));
+        await api.updateSession(currentSessionId, { model: newModel });
       } catch (err) {
         console.error('Failed to update model:', err);
       }
@@ -296,8 +275,7 @@ export function App() {
     setThinkingEffort(newEffort);
     if (currentSessionId && !isTemporary) {
       try {
-        const updated = await api.updateSession(currentSessionId, { thinking_effort: newEffort });
-        setSessions((prev) => prev.map((s) => (s.id === currentSessionId ? updated : s)));
+        await api.updateSession(currentSessionId, { thinking_effort: newEffort });
       } catch (err) {
         console.error('Failed to update effort:', err);
       }
@@ -308,8 +286,7 @@ export function App() {
     setRecallBudget(newRecall);
     if (currentSessionId && !isTemporary) {
       try {
-        const updated = await api.updateSession(currentSessionId, { recall_budget: newRecall });
-        setSessions((prev) => prev.map((s) => (s.id === currentSessionId ? updated : s)));
+        await api.updateSession(currentSessionId, { recall_budget: newRecall });
       } catch (err) {
         console.error('Failed to update recall:', err);
       }
@@ -320,8 +297,7 @@ export function App() {
     setVerbosity(newVerbosity);
     if (currentSessionId && !isTemporary) {
       try {
-        const updated = await api.updateSession(currentSessionId, { verbosity: newVerbosity });
-        setSessions((prev) => prev.map((s) => (s.id === currentSessionId ? updated : s)));
+        await api.updateSession(currentSessionId, { verbosity: newVerbosity });
       } catch (err) {
         console.error('Failed to update verbosity:', err);
       }
@@ -333,29 +309,7 @@ export function App() {
     const text = (textToSend || inputValue).trim();
     if (!text || isStreaming) return;
 
-    let targetSessionId = currentSessionId;
-    // Only create session in backend if this is a new chat
-    if (!targetSessionId) {
-      if (!isTemporary) {
-        try {
-          const newSess = await api.createSession({
-            recall_budget: recallBudget,
-            thinking_effort: thinkingEffort,
-            verbosity: verbosity,
-            model: selectedModel,
-          });
-          setSessions((prev) => [newSess, ...prev]);
-          setCurrentSessionId(newSess.id);
-          targetSessionId = newSess.id;
-        } catch (e) {
-          console.error('Failed to create session on message send:', e);
-          return;
-        }
-      } else {
-        targetSessionId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `temp-${Date.now()}`;
-        setCurrentSessionId(targetSessionId);
-      }
-    }
+    const targetSessionId = currentSessionId || 'main';
 
     setInputValue('');
     if (textareaRef.current) {
@@ -363,7 +317,6 @@ export function App() {
     }
     setIsOptionsOpen(false);
 
-    // 1. Generate stable IDs matching backend
     const userMsgId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `user-${Date.now()}`;
     const asstMsgId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `asst-${Date.now()}`;
 
@@ -381,7 +334,7 @@ export function App() {
       role: 'assistant',
       content: '',
       isStreaming: true,
-      statusText: 'Fetching recall',
+      statusText: 'Thinking',
       reasoning: '',
       toolCalls: [],
       created_at: new Date().toISOString(),
@@ -408,11 +361,6 @@ export function App() {
           isTemporary,
         },
         {
-          onSessionRenamed: (name) => {
-            setSessions((prev) =>
-              prev.map((s) => (s.id === targetSessionId ? { ...s, name } : s))
-            );
-          },
           onStatus: (statusText) => {
             setMessages((prev) =>
               prev.map((m) => (m.id === asstMsgId ? { ...m, statusText } : m))
@@ -429,6 +377,13 @@ export function App() {
                 m.id === asstMsgId
                   ? { ...m, reasoning: (m.reasoning || '') + deltaText }
                   : m
+              )
+            );
+          },
+          onThreadProposal: (proposal) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === asstMsgId ? { ...m, thread_proposal: proposal } : m
               )
             );
           },
@@ -477,6 +432,8 @@ export function App() {
                     content: data.text || m.content,
                     usage: data.usage,
                     isStreaming: false,
+                    statusText: undefined,
+                    thread_proposal: data.thread_proposal || m.thread_proposal,
                   };
                 }
                 if (m.id === userMsgId && data.user_message_id) {
@@ -496,7 +453,7 @@ export function App() {
                 m.id === asstMsgId
                   ? {
                       ...m,
-                      content: m.content || `⚠️ Error: ${err}`,
+                      content: m.content || `[Error]: ${err}`,
                       isStreaming: false,
                     }
                   : m
@@ -527,21 +484,17 @@ export function App() {
     );
   };
 
-  // Edit user prompt & resend: truncates subsequent SQLite messages from that prompt onward
+  // Edit user prompt & resend
   const handleEditAndResend = async (messageId: string, newContent: string) => {
     if (!currentSessionId || isStreaming) return;
 
     const targetIdx = messages.findIndex((m) => m.id === messageId);
     if (targetIdx === -1) return;
 
-    // 1. Truncate backend messages from target message onward
     await api.truncateMessagesFrom(currentSessionId, messageId);
-
-    // 2. Slice local messages state
     const trimmed = messages.slice(0, targetIdx);
     setMessages(trimmed);
 
-    // 3. Send new message turn
     setIsUserScrolledUp(false);
     handleSendMessage(newContent);
   };
@@ -563,31 +516,27 @@ export function App() {
     if (userIdx === -1) return;
 
     const userMsg = messages[userIdx];
-
-    // 1. Truncate in SQLite from this assistant message onward
     await api.truncateMessagesFrom(currentSessionId, asstMessageId);
-
-    // 2. Slice local messages state up to user message
     const trimmed = messages.slice(0, asstIdx);
     setMessages(trimmed);
 
-    // 3. Re-trigger stream with the user prompt
     setIsUserScrolledUp(false);
     handleSendMessage(userMsg.content);
   };
 
-  // Is options button highlighted (any non-default values)?
   const isOptionsHighlighted =
-    isOptionsOpen ||
     selectedModel !== 'gpt-5.4-mini' ||
     thinkingEffort !== 'medium' ||
     recallBudget !== 'medium' ||
     verbosity !== 'low';
 
-  // Render Input Capsule (reused in centered Claude/ChatGPT/Gemini mode and bottom-docked mode)
+  // Render input capsule
   const renderInputCapsule = (isCentered: boolean = false) => (
-    <div className={`relative w-full ${isCentered ? 'max-w-2xl sm:max-w-3xl' : 'max-w-3xl'}`}>
-      {/* Options Menu Popover directly anchored above the '+' button */}
+    <div
+      className={`relative w-full ${
+        isCentered ? 'max-w-2xl sm:max-w-3xl' : 'max-w-3xl'
+      } flex flex-col items-center select-none`}
+    >
       <OptionsMenu
         isOpen={isOptionsOpen}
         onClose={() => setIsOptionsOpen(false)}
@@ -601,9 +550,8 @@ export function App() {
         onUpdateVerbosity={handleUpdateVerbosity}
       />
 
-      {/* Input Capsule (Flat, NO borders) */}
-      <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-[26px] bg-[var(--bg-input)] shadow-2xl transition-all">
-        {/* '+' Options Button */}
+      {/* Input Capsule */}
+      <div className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-[26px] bg-[var(--bg-input)] shadow-2xl transition-all border border-zinc-800/60 focus-within:border-zinc-700">
         <button
           id="options-toggle-btn"
           type="button"
@@ -622,7 +570,6 @@ export function App() {
           />
         </button>
 
-        {/* Auto-expanding Input Field */}
         <textarea
           ref={textareaRef}
           value={inputValue}
@@ -637,12 +584,17 @@ export function App() {
               handleSendMessage();
             }
           }}
-          placeholder={isTemporary ? "Message in Temporary Chat..." : "Message Velocity..."}
+          placeholder={
+            activeThread
+              ? `Focus on ${activeThread.name}...`
+              : isTemporary
+              ? 'Message in Temporary Scratch turn...'
+              : 'Message Velocity...'
+          }
           rows={1}
           className="flex-1 bg-transparent text-[16px] sm:text-[16.5px] font-medium text-[var(--text-primary)] placeholder-[var(--text-dim)] outline-none resize-none py-1.5 px-1 leading-snug max-h-40"
         />
 
-        {/* Send or Stop Generation Button */}
         {isStreaming ? (
           <button
             type="button"
@@ -673,68 +625,121 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans">
-      {/* 1. Collapsible Sidebar (Flat, no borders) */}
-      {sidebarOpen && (
-        <Sidebar
-          sessions={sessions}
-          currentSessionId={currentSessionId}
-          onSelectSession={handleSelectSession}
-          onNewChat={handleNewChat}
-          onDeleteSession={handleDeleteSession}
-          onRenameSession={handleRenameSession}
-          isBackendOnline={isBackendOnline}
-          healthDetails={healthDetails}
-          onOpenSearch={() => setIsSearchOpen(true)}
-          onCloseSidebar={() => setSidebarOpen(false)}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          onOpenMemoryInspector={() => setIsMemoryInspectorOpen(true)}
-        />
-      )}
+      {/* 1. WhatsApp-Style Navigation Rail with Sliding Flyouts */}
+      <NavigationRail
+        currentSessionId={currentSessionId}
+        activeFlyout={activeFlyout}
+        onSelectFlyout={setActiveFlyout}
+        onSelectSession={handleSelectSession}
+        onOpenMemoryInspector={() => setIsMemoryInspectorOpen(true)}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        isBackendOnline={isBackendOnline}
+        healthDetails={healthDetails}
+      />
 
-      {/* 2. Main Chat Area */}
+      {/* 2. Main Work Area (Lifelong Timeline or Full-screen Side Chat) */}
       <main className="flex-1 flex flex-col h-full min-w-0 relative bg-[var(--bg-primary)]">
-        {/* Top Minimal Header: Pure clean canvas, NO borders, NO orange dot */}
-        <header className="relative z-30 h-12 flex items-center justify-between px-6 flex-shrink-0 select-none">
-          <div className="flex items-center gap-3">
-            {!sidebarOpen && (
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(true)}
-                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
-                title="Open sidebar (⌘B)"
-              >
-                <PanelLeft className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+        {/* Top Header */}
+        <header className="relative z-20 h-13 border-b border-zinc-800/80 bg-[#000000]/80 backdrop-blur-md flex items-center justify-between px-6 flex-shrink-0 select-none">
+          {activeThread ? (
+            /* Side Chat (Thread) Dedicated Full-Screen Top Bar */
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSelectSession('main')}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Main Timeline</span>
+                </button>
+                <div className="w-[1px] h-4 bg-zinc-800" />
+                <div className="flex items-center gap-2">
+                  <GitBranch className="w-4 h-4 text-sky-400" />
+                  <h2 className="text-sm font-semibold text-zinc-100 truncate max-w-[280px] sm:max-w-md">
+                    {activeThread.name}
+                  </h2>
+                  <span
+                    className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border ${
+                      activeThread.status === 'active'
+                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                    }`}
+                  >
+                    {activeThread.status}
+                  </span>
+                </div>
+              </div>
 
-          <div className="flex items-center gap-2">
-            {/* Temp chat button: ONLY visible in new chat (messages.length === 0) and ICON ONLY */}
-            {messages.length === 0 && (
-              <button
-                type="button"
-                onClick={handleToggleTempChat}
-                title={
-                  isTemporary
-                    ? 'Temporary Chat Active (Click to disable)'
-                    : 'Enable Temporary Chat (Ephemeral, not saved to history)'
-                }
-                className={`p-2 rounded-xl transition-all ${
-                  isTemporary
-                    ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] shadow-sm'
-                    : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
-                }`}
-              >
-                <Ghost className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRollupActiveThread}
+                  title="Synthesize updated rollup summary"
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-xs font-medium transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Rollup</span>
+                </button>
+
+                {activeThread.status === 'active' ? (
+                  <button
+                    type="button"
+                    onClick={handleConcludeActiveThread}
+                    title="Conclude side chat and generate rollup summary"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Conclude</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleReopenActiveThread}
+                    title="Reopen side chat"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Reopen</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Main Continuous Timeline Top Bar */
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-2.5">
+                <span className="text-sm font-bold tracking-tight text-zinc-100">Velocity</span>
+                <span className="text-[11px] font-medium text-zinc-500 hidden sm:inline">
+                  Direct, sharp engineering peer
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleTempChat}
+                  title={
+                    isTemporary
+                      ? 'Temporary Scratch Turn Active (Click to disable)'
+                      : 'Enable Temporary Scratch Turn'
+                  }
+                  className={`p-2 rounded-xl transition-all ${
+                    isTemporary
+                      ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] shadow-sm'
+                      : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
+                  }`}
+                >
+                  <Ghost className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </header>
 
-        {/* 3. Claude/ChatGPT/Gemini Centered New Chat View vs. Conversation View */}
+        {/* 3. Centered Empty State vs. Continuous Conversation View */}
         {messages.length === 0 ? (
-          /* Centered greeting and input bar above middle of screen */
           <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-8 select-none">
             <div className="w-full max-w-2xl sm:max-w-3xl flex flex-col items-center -translate-y-8">
               <h1
@@ -742,13 +747,12 @@ export function App() {
                 title="Click to shuffle greeting"
                 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-8 text-center font-sans cursor-pointer hover:opacity-80 active:scale-[0.99] transition-all"
               >
-                {greeting}
+                {activeThread ? activeThread.name : greeting}
               </h1>
               {renderInputCapsule(true)}
             </div>
           </div>
         ) : (
-          /* Conversation View: scrollable messages + docked bottom input capsule */
           <div className="relative flex-1 flex flex-col min-h-0">
             <div
               ref={chatScrollRef}
@@ -762,12 +766,14 @@ export function App() {
                     message={msg}
                     onEditAndResend={handleEditAndResend}
                     onRegenerate={handleRegenerate}
+                    onOpenThread={(threadId) => handleSelectSession(threadId)}
+                    onRespondProposal={handleRespondProposal}
                   />
                 ))}
               </div>
             </div>
 
-            {/* Scroll to Bottom Button: Round button with down arrow, no text */}
+            {/* Scroll to Bottom Button */}
             {isUserScrolledUp && (
               <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 animate-fade-in pointer-events-auto">
                 <button

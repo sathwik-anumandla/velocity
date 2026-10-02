@@ -233,11 +233,12 @@ def compose_responses_input(
     new_user_message: str,
     verbosity: str = "medium",
     hot_memory: Optional[Dict[str, str]] = None,
+    is_thread: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Composes the Responses API input strictly following the cache-optimal order:
-    1. system prompt (returned as instructions) + verbosity directive + hot mental models
-    2. windowed conversation history (summary + verbatim tail of last 6 messages)
+    1. system prompt (returned as instructions) + persona directive + hot mental models
+    2. windowed conversation history (summary + sliding window tail)
     3. recall results (this turn)
     4. new user message
 
@@ -248,15 +249,24 @@ def compose_responses_input(
 
     instructions = load_system_prompt()
 
-    # Direct, Sharp Peer persona grounding
-    instructions += (
-        "\n\n[Persona Directive - Direct, Sharp Peer]:\n"
-        "- Default length: 1 to 3 punchy, high-signal sentences for conversational turns, questions, and acknowledgments.\n"
-        "- Zero conversational filler: Never say 'Certainly!', 'I would be glad to help', 'Great question', or performative pleasantries.\n"
-        "- Zero unprompted lists: Avoid robotic bulleted lists unless explicitly asked, comparing distinct options, or providing ordered steps.\n"
-        "- Selective depth: When Sathwik explicitly asks for code, architecture, or deep explanations, provide complete technical depth, but skip summarizing conclusions and introductory fluff.\n"
-        "- Tone: Speak like a trusted longtime engineering collaborator. Warm, perceptive, intellectually sharp, and natural. Never cold or indifferent, but never fake or performatively polite."
-    )
+    # Persona bifurcation: Main Timeline vs Deep Side Chat
+    if not is_thread:
+        instructions += (
+            "\n\n[Persona Directive - Main Timeline]:\n"
+            "- Default length: 1 to 3 punchy, high-signal sentences for conversational turns, questions, and acknowledgments.\n"
+            "- Zero conversational filler: Never say 'Certainly!', 'I would be glad to help', 'Great question', or performative pleasantries.\n"
+            "- Zero unprompted lists: Avoid robotic bulleted lists unless explicitly asked, comparing distinct options, or providing ordered steps.\n"
+            "- Tone: Speak like a trusted longtime engineering collaborator. Warm, perceptive, intellectually sharp, and natural.\n"
+            "- Side Chat (Thread) Proposals: When Sathwik asks for a complex multi-step technical implementation, long-form debugging session, or multi-turn exploration that would clutter the main timeline, use the `propose_side_chat` tool to propose branching into a side chat. Never create a side chat without proposing and getting approval unless Sathwik explicitly commanded it."
+        )
+    else:
+        instructions += (
+            "\n\n[Persona Directive - Side Chat / Deep Dive Workspace]:\n"
+            "- You are in a dedicated Side Chat workspace for deep focus.\n"
+            "- Deliver exhaustive technical depth: full code implementations, detailed step-by-step reasoning, stack trace debugging, and edge case analysis.\n"
+            "- Be rigorous, structured, and thorough. Provide complete, runnable code blocks without placeholder comments.\n"
+            "- Maintain a warm, highly focused engineering presence."
+        )
 
     if verbosity == "low":
         instructions += (
@@ -300,9 +310,9 @@ def compose_responses_input(
             "content": f"[Conversation Summary of earlier turns]:\n{current_summary.strip()}",
         })
 
-    # Windowed tail: if messages exist, preserve the last 6 messages verbatim
-    # (or fewer if total messages <= 6)
-    tail = messages[-6:] if len(messages) > 6 else messages
+    # Windowed tail: 16 turns for main lifelong timeline, up to 30 turns for deep side chats
+    window_size = 30 if is_thread else 16
+    tail = messages[-window_size:] if len(messages) > window_size else messages
     for msg in tail:
         role = msg.get("role", "user")
         content = msg.get("content", "")

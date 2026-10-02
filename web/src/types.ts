@@ -13,6 +13,33 @@ export interface Session {
   created_at: string;
   updated_at: string;
   is_temporary?: boolean;
+  is_thread?: number;
+  parent_session_id?: string;
+  parent_message_id?: string;
+  status?: 'active' | 'concluded';
+  rollup_summary?: string;
+}
+
+export interface ThreadItem {
+  id: string;
+  name: string;
+  is_thread: number;
+  parent_session_id?: string;
+  parent_message_id?: string;
+  status: 'active' | 'concluded';
+  rollup_summary?: string;
+  model: string;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+}
+
+export interface ThreadProposal {
+  title: string;
+  reason: string;
+  suggested_first_turn?: string;
+  status: 'pending' | 'accepted' | 'declined';
+  thread_id?: string;
 }
 
 export interface ToolCallState {
@@ -34,6 +61,9 @@ export interface ChatMessage {
   content: string;
   memory_status?: string;
   created_at: string;
+  // Side chat thread associations
+  thread_id?: string;
+  thread_proposal?: string | ThreadProposal;
   // Dynamic streaming & tool state
   reasoning?: string;
   statusText?: string;
@@ -46,6 +76,27 @@ export interface ChatMessage {
     total_tokens?: number;
   };
 }
+
+export interface NavigationLink {
+  url: string;
+  title: string;
+  message_id: string;
+  session_id: string;
+  session_name: string;
+  is_thread: number;
+  created_at: string;
+}
+
+export interface ChronologyEvent {
+  type: 'thread_event' | 'link_event' | 'vault_event';
+  title: string;
+  description: string;
+  status?: string;
+  timestamp: string;
+  metadata?: Record<string, any>;
+}
+
+export type ActiveFlyout = 'none' | 'threads' | 'search' | 'links' | 'chronology';
 
 export interface SearchResult {
   id?: string;

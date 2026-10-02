@@ -1,4 +1,16 @@
-import type { Session, ChatMessage, SearchResult, RecallBudget, ThinkingEffort, Verbosity, SupportedModel } from './types';
+import type {
+  Session,
+  ChatMessage,
+  SearchResult,
+  RecallBudget,
+  ThinkingEffort,
+  Verbosity,
+  SupportedModel,
+  ThreadItem,
+  ThreadProposal,
+  NavigationLink,
+  ChronologyEvent,
+} from './types';
 
 const API_BASE = ''; // relative URL, handled by Vite proxy in dev and FastAPI mount in prod
 
@@ -130,6 +142,7 @@ export interface StreamChatHandlers {
   onAgenticStep?: (step: { step: string; message: string }) => void;
   onToolStart?: (tool: string, query?: string) => void;
   onToolDone?: (tool: string, result?: string) => void;
+  onThreadProposal?: (proposal: ThreadProposal) => void;
   onDelta: (text: string) => void;
   onComplete: (data: {
     text: string;
@@ -137,6 +150,7 @@ export interface StreamChatHandlers {
     usage: Record<string, any>;
     user_message_id?: string;
     assistant_message_id?: string;
+    thread_proposal?: ThreadProposal;
   }) => void;
   onError: (error: string) => void;
 }
@@ -211,6 +225,8 @@ export async function streamChatTurn(
               handlers.onThinking?.();
             } else if (currentEvent === 'reasoning_delta') {
               handlers.onReasoningDelta?.(data.text || '');
+            } else if (currentEvent === 'thread_proposal') {
+              handlers.onThreadProposal?.(data);
             } else if (currentEvent === 'tool_start' || currentEvent === 'tool_call') {
               const toolName = data.tool || 'tool';
               if (toolName === 'tavily_search') {
@@ -225,6 +241,8 @@ export async function streamChatTurn(
                 handlers.onStatus?.('Creating memory doc');
               } else if (toolName === 'read_mental_model') {
                 handlers.onStatus?.('Fetching mental model');
+              } else if (toolName === 'propose_side_chat') {
+                handlers.onStatus?.('Proposing side chat');
               }
               handlers.onToolStart?.(toolName, data.query || '');
             } else if (currentEvent === 'tool_done' || currentEvent === 'tool_result') {
@@ -236,6 +254,9 @@ export async function streamChatTurn(
                 text: data.text || '',
                 memory_status: data.memory_status || 'ok',
                 usage: data.usage || {},
+                user_message_id: data.user_message_id,
+                assistant_message_id: data.assistant_message_id,
+                thread_proposal: data.thread_proposal,
               });
             } else if (currentEvent === 'error') {
               handlers.onError(data.error || 'Unknown error');
@@ -337,4 +358,84 @@ export async function triggerVaultSynthesis(): Promise<boolean> {
   const res = await fetch(`${API_BASE}/api/memory/synthesis`, { method: 'POST' });
   return res.ok;
 }
+
+// ==========================================
+// Phase 2: Side Chats (Threads) & Navigation
+// ==========================================
+
+export async function listThreads(status?: string): Promise<{ threads: ThreadItem[] }> {
+  const url = status ? `${API_BASE}/api/threads?status=${encodeURIComponent(status)}` : `${API_BASE}/api/threads`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to list threads: ${res.status}`);
+  return res.json();
+}
+
+export async function createThread(params: {
+  name: string;
+  parent_message_id?: string;
+  parent_session_id?: string;
+  model?: string;
+  initial_summary?: string;
+}): Promise<ThreadItem> {
+  const res = await fetch(`${API_BASE}/api/threads`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) throw new Error(`Failed to create thread: ${res.status}`);
+  return res.json();
+}
+
+export async function getThread(threadId: string): Promise<ThreadItem> {
+  const res = await fetch(`${API_BASE}/api/threads/${threadId}`);
+  if (!res.ok) throw new Error(`Failed to get thread ${threadId}: ${res.status}`);
+  return res.json();
+}
+
+export async function updateThread(
+  threadId: string,
+  updates: { name?: string; status?: string; rollup_summary?: string }
+): Promise<ThreadItem> {
+  const res = await fetch(`${API_BASE}/api/threads/${threadId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) throw new Error(`Failed to update thread ${threadId}: ${res.status}`);
+  return res.json();
+}
+
+export async function triggerThreadRollup(threadId: string, conclude: boolean = false): Promise<{ status: string; message: string }> {
+  const res = await fetch(`${API_BASE}/api/threads/${threadId}/rollup?conclude=${conclude}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error(`Failed to trigger thread rollup: ${res.status}`);
+  return res.json();
+}
+
+export async function respondToThreadProposal(
+  messageId: string,
+  action: 'accept' | 'decline'
+): Promise<{ status: string; thread?: ThreadItem; proposal: ThreadProposal }> {
+  const res = await fetch(`${API_BASE}/api/threads/proposals/${messageId}/respond`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) throw new Error(`Failed to respond to proposal: ${res.status}`);
+  return res.json();
+}
+
+export async function getNavigationLinks(limit: number = 50): Promise<{ links: NavigationLink[] }> {
+  const res = await fetch(`${API_BASE}/api/navigation/links?limit=${limit}`);
+  if (!res.ok) throw new Error(`Failed to get links: ${res.status}`);
+  return res.json();
+}
+
+export async function getNavigationChronology(limit: number = 50): Promise<{ events: ChronologyEvent[] }> {
+  const res = await fetch(`${API_BASE}/api/navigation/chronology?limit=${limit}`);
+  if (!res.ok) throw new Error(`Failed to get chronology: ${res.status}`);
+  return res.json();
+}
+
 

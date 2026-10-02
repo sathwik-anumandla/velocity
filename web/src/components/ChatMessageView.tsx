@@ -2,20 +2,24 @@ import { useState } from 'react';
 import type { FC } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Pencil, Copy, Check, RotateCcw } from 'lucide-react';
-import type { ChatMessage } from '../types';
+import { Pencil, Copy, Check, RotateCcw, GitBranch, ArrowRight } from 'lucide-react';
+import type { ChatMessage, ThreadProposal } from '../types';
 import { CodeBlock } from './CognitiveWidgets';
 
 interface ChatMessageViewProps {
   message: ChatMessage;
   onEditAndResend: (messageId: string, newContent: string) => void;
   onRegenerate?: (messageId: string) => void;
+  onOpenThread?: (threadId: string) => void;
+  onRespondProposal?: (messageId: string, action: 'accept' | 'decline') => void;
 }
 
 export const ChatMessageView: FC<ChatMessageViewProps> = ({
   message,
   onEditAndResend,
   onRegenerate,
+  onOpenThread,
+  onRespondProposal,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -117,6 +121,19 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
   }
 
   // Assistant Message
+  let proposal: ThreadProposal | null = null;
+  if (message.thread_proposal) {
+    if (typeof message.thread_proposal === 'object') {
+      proposal = message.thread_proposal as ThreadProposal;
+    } else {
+      try {
+        proposal = JSON.parse(message.thread_proposal);
+      } catch {
+        proposal = null;
+      }
+    }
+  }
+
   return (
     <div className="flex flex-col items-start mb-8 group w-full max-w-full">
       {/* Main Markdown Response Content or Single-Line Flowing Status */}
@@ -189,6 +206,84 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
           </div>
         ) : null}
       </div>
+
+      {/* Side Chat Proposal Card */}
+      {proposal && (
+        <div className="mt-3.5 p-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 shadow-md max-w-xl w-full">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-1.5 text-zinc-400">
+              <GitBranch className="w-4 h-4 text-sky-400" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider">
+                Proposed Side Chat
+              </span>
+            </div>
+            <span
+              className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border ${
+                proposal.status === 'accepted'
+                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                  : proposal.status === 'declined'
+                  ? 'bg-zinc-800/80 text-zinc-400 border-zinc-700'
+                  : 'bg-sky-500/10 text-sky-400 border-sky-500/30'
+              }`}
+            >
+              {proposal.status === 'accepted'
+                ? 'Branched'
+                : proposal.status === 'declined'
+                ? 'Declined'
+                : 'Awaiting Approval'}
+            </span>
+          </div>
+
+          <h4 className="text-[15px] font-semibold text-zinc-100 mb-1">
+            {proposal.title}
+          </h4>
+          {proposal.reason && (
+            <p className="text-[13.5px] text-zinc-400 mb-3 leading-relaxed">
+              {proposal.reason}
+            </p>
+          )}
+
+          {(!proposal.status || proposal.status === 'pending') && (
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => onRespondProposal?.(message.id, 'accept')}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 font-medium text-xs hover:bg-white transition-colors"
+              >
+                <GitBranch className="w-3.5 h-3.5" />
+                Open Side Chat
+              </button>
+              <button
+                type="button"
+                onClick={() => onRespondProposal?.(message.id, 'decline')}
+                className="px-3 py-1.5 rounded-lg border border-zinc-800 text-zinc-300 font-medium text-xs hover:bg-zinc-900 hover:text-white transition-colors"
+              >
+                Continue Here
+              </button>
+            </div>
+          )}
+
+          {proposal.status === 'accepted' && proposal.thread_id && (
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => onOpenThread?.(proposal.thread_id!)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-200 font-medium text-xs hover:bg-zinc-800 hover:text-white transition-colors"
+              >
+                <GitBranch className="w-3.5 h-3.5 text-emerald-400" />
+                Jump to Side Chat
+                <ArrowRight className="w-3.5 h-3.5 text-zinc-400" />
+              </button>
+            </div>
+          )}
+
+          {proposal.status === 'declined' && (
+            <p className="text-xs text-zinc-500 italic pt-1">
+              Continued right in main timeline.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* 5. Bottom Message Actions: Copy, Regenerate — ALWAYS VISIBLE on every assistant response */}
       {!message.isStreaming && message.content && (

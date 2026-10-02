@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 from backend.database import (
     init_db,
+    get_connection,
     create_session as db_create_session,
     get_session as db_get_session,
     update_session as db_update_session,
@@ -31,6 +32,13 @@ from backend.database import (
     get_messages as db_get_messages,
     truncate_messages_from as db_truncate_messages_from,
     search_messages as db_search_messages,
+    list_threads as db_list_threads,
+    create_thread as db_create_thread,
+    update_thread as db_update_thread,
+    get_thread as db_get_thread,
+    update_message_proposal as db_update_message_proposal,
+    get_extracted_links as db_get_extracted_links,
+    get_chronology_events as db_get_chronology_events,
 )
 from backend.schemas import (
     ChatRequest,
@@ -39,6 +47,10 @@ from backend.schemas import (
     SessionResponse,
     MessageResponse,
     SearchResult,
+    ThreadCreate,
+    ThreadUpdate,
+    ThreadResponse,
+    ProposalResponseAction,
 )
 from backend.hindsight import HindsightClient
 from backend.prompt import (
@@ -603,9 +615,14 @@ async def chat_stream(request: ChatRequest):
         current_summary = session.get("summary")
         last_tokens = session.get("last_tokens") or 0
 
+    is_thread = False
+    if not is_temp:
+        is_thread = bool(session and session.get("is_thread"))
+
     # Renaming layer: Before sending to main model, send to classifier model to rename the chat
+    # Never rename main timeline ('main') or side chats (is_thread)
     renamed_title = None
-    if not is_temp and (len(history_messages) == 0 or session["name"].startswith("Session ") or session["name"] in ["New Chat", "New Conversation"]):
+    if not is_temp and session_id != "main" and not is_thread and (len(history_messages) == 0 or session["name"].startswith("Session ") or session["name"] in ["New Chat", "New Conversation"]):
         renamed_title = await asyncio.to_thread(classify_and_rename_session, user_message, session_id)
         if renamed_title and session:
             session["name"] = renamed_title
@@ -616,6 +633,7 @@ async def chat_stream(request: ChatRequest):
         nonlocal overall_memory_status
         full_assistant_response = ""
         usage_data = {}
+        thread_proposal_data = None
 
         if renamed_title:
             yield {
@@ -645,9 +663,10 @@ async def chat_stream(request: ChatRequest):
         # Hot mental models (user-persona & current-context) from cache (< 1ms warm, < 30ms cold)
         hot_memory = await asyncio.to_thread(hindsight_client.get_hot_context)
 
-        # Check if waterfall triggers summarization of older history (>6 messages)
+        # Check if waterfall triggers summarization of older history
+        cutoff = 30 if is_thread else (16 if session_id == "main" else 6)
         local_summary = current_summary
-        if len(history_messages) > 6:
+        if len(history_messages) > cutoff:
             total_turns = len(history_messages) // 2
             last_msg_ts = history_messages[-1]["created_at"] if history_messages else None
             should_sum, reason = evaluate_summarization_waterfall(
@@ -658,7 +677,7 @@ async def chat_stream(request: ChatRequest):
             )
             if should_sum:
                 logger.info(f"Summarization waterfall triggered: {reason}")
-                to_summarize = history_messages[:-6]
+                to_summarize = history_messages[:-cutoff]
                 new_summary = await asyncio.to_thread(generate_summary, local_summary, to_summarize)
                 if new_summary:
                     local_summary = new_summary
@@ -675,6 +694,7 @@ async def chat_stream(request: ChatRequest):
             new_user_message=user_message,
             verbosity=verbosity,
             hot_memory=hot_memory,
+            is_thread=is_thread,
         )
 
         # Step 4: Real-time status for Model Thinking
@@ -692,6 +712,7 @@ async def chat_stream(request: ChatRequest):
             verbosity=verbosity,
             model=model,
             is_temporary=is_temp,
+            is_thread=is_thread,
         ):
             ev = sse_item["event"]
             raw_data = sse_item["data"]
@@ -701,6 +722,7 @@ async def chat_stream(request: ChatRequest):
                     payload = json.loads(raw_data)
                     full_assistant_response = payload.get("text", "")
                     usage_data = payload.get("usage", {})
+                    thread_proposal_data = payload.get("thread_proposal", None)
                 except Exception:
                     pass
             else:
@@ -766,13 +788,14 @@ async def chat_stream(request: ChatRequest):
                 role="assistant",
                 content=full_assistant_response,
                 memory_status=overall_memory_status,
+                thread_proposal=json.dumps(thread_proposal_data) if thread_proposal_data else None,
             )
             db_update_session(
                 session_id=session_id,
                 last_tokens=new_total_tokens,
             )
 
-        # Emit final completion event with message IDs, memory status and usage
+        # Emit final completion event with message IDs, memory status, thread proposal and usage
         yield {
             "event": "complete",
             "data": json.dumps({
@@ -781,6 +804,7 @@ async def chat_stream(request: ChatRequest):
                 "usage": usage_data,
                 "user_message_id": user_msg_id,
                 "assistant_message_id": asst_msg_id,
+                "thread_proposal": thread_proposal_data,
             }),
         }
 
@@ -922,6 +946,225 @@ async def trigger_vault_synthesis_endpoint():
         "status": "triggered",
         "message": "Vault synthesis triggered in background."
     }
+
+
+# ==============================================================================
+# Phase 2: Side Chats (Threads) & Navigation Rail Endpoints
+# ==============================================================================
+async def synthesize_thread_rollup(thread: Dict[str, Any], messages: List[Dict[str, Any]], conclude: bool = False):
+    """
+    Background worker that synthesizes an updated rollup summary for a side chat using gpt-5.4-mini,
+    updates the session in SQLite, and posts a 1-line update bump in the main timeline.
+    """
+    thread_id = thread["id"]
+    thread_name = thread.get("name", "Side Chat")
+    parent_session_id = thread.get("parent_session_id") or "main"
+
+    recent = messages[-20:]
+    formatted_convo = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in recent])
+
+    prompt = (
+        "You are Velocity's background thread synthesizer.\n"
+        f"Side Chat Title: {thread_name}\n\n"
+        "Recent Side Chat History:\n"
+        f"{formatted_convo}\n\n"
+        "Instructions:\n"
+        "Summarize what was accomplished in this side chat, current technical state, and key decisions.\n"
+        "- Exactly 2 to 3 punchy, high-signal sentences.\n"
+        "- Strictly NO emojis anywhere in your output.\n"
+        "- No introductory filler (e.g. 'In this thread...', 'Here is a summary'). Direct, sharp statement."
+    )
+
+    try:
+        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        base_url = (os.getenv("OPENAI_BASE_URL", "") or "https://api.openai.com/v1").strip().rstrip("/")
+        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+
+        resp = await asyncio.to_thread(
+            client.chat.completions.create,
+            model="gpt-5.4-mini",
+            messages=[
+                {"role": "system", "content": "You are a concise engineering synthesizer. Output strictly 2-3 sentences. No emojis."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=250,
+        )
+        summary = resp.choices[0].message.content.strip()
+
+        # Update thread in DB
+        new_status = "concluded" if conclude else thread.get("status", "active")
+        db_update_thread(thread_id, rollup_summary=summary, status=new_status)
+
+        # Drop update bump in main timeline
+        prefix = "Side Chat Concluded" if conclude else "Side Chat Update"
+        bump_content = f"[{prefix}: {thread_name}]\n{summary}"
+        bump_id = str(uuid.uuid4())
+        db_add_message(
+            message_id=bump_id,
+            session_id=parent_session_id,
+            role="assistant",
+            content=bump_content,
+            thread_id=thread_id,
+        )
+        logger.info(f"Synthesized rollup for thread {thread_id}: {summary}")
+    except Exception as e:
+        logger.error(f"Error synthesizing thread rollup for {thread_id}: {e}")
+
+
+@app.get("/api/threads")
+async def list_threads_endpoint(status: Optional[str] = None):
+    """
+    Lists all side chats (threads), ordered newest first.
+    """
+    threads = await asyncio.to_thread(db_list_threads, status)
+    return {"threads": threads}
+
+
+@app.post("/api/threads")
+async def create_thread_endpoint(req: ThreadCreate):
+    """
+    Creates a new side chat thread.
+    """
+    thread_id = f"thread_{uuid.uuid4().hex[:12]}"
+    thread = await asyncio.to_thread(
+        db_create_thread,
+        thread_id=thread_id,
+        name=req.name,
+        parent_message_id=req.parent_message_id,
+        parent_session_id=req.parent_session_id,
+        model=req.model,
+        initial_summary=req.initial_summary,
+    )
+    return thread
+
+
+@app.get("/api/threads/{thread_id}")
+async def get_thread_endpoint(thread_id: str):
+    """
+    Retrieves metadata for a specific side chat thread.
+    """
+    thread = await asyncio.to_thread(db_get_thread, thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return thread
+
+
+@app.patch("/api/threads/{thread_id}")
+async def update_thread_endpoint(thread_id: str, req: ThreadUpdate):
+    """
+    Updates side chat thread metadata (name, status, rollup_summary).
+    """
+    thread = await asyncio.to_thread(
+        db_update_thread,
+        thread_id=thread_id,
+        name=req.name,
+        status=req.status,
+        rollup_summary=req.rollup_summary,
+    )
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return thread
+
+
+@app.post("/api/threads/{thread_id}/rollup")
+async def trigger_thread_rollup_endpoint(thread_id: str, conclude: bool = False):
+    """
+    Triggers background rollup synthesis for a side chat.
+    """
+    thread = await asyncio.to_thread(db_get_thread, thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    messages = await asyncio.to_thread(db_get_messages, thread_id)
+    if not messages:
+        if conclude:
+            await asyncio.to_thread(db_update_thread, thread_id, status="concluded")
+        return {"status": "ok", "message": "No messages in thread to synthesize."}
+
+    asyncio.create_task(synthesize_thread_rollup(thread, messages, conclude=conclude))
+    return {
+        "status": "triggered",
+        "message": "Thread rollup synthesis initiated in background.",
+    }
+
+
+@app.post("/api/threads/proposals/{message_id}/respond")
+async def respond_to_thread_proposal_endpoint(message_id: str, body: ProposalResponseAction):
+    """
+    Handles user action on a side chat proposal card: accept or decline.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM messages WHERE id = ?", (message_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    raw_proposal = row["thread_proposal"]
+    if not raw_proposal:
+        raise HTTPException(status_code=400, detail="Message has no thread proposal")
+
+    try:
+        proposal_data = json.loads(raw_proposal)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid proposal data in message")
+
+    if body.action == "accept":
+        thread_id = f"thread_{uuid.uuid4().hex[:12]}"
+        thread_name = proposal_data.get("title", "Side Chat")
+        initial_summary = proposal_data.get("reason", "")
+        parent_session_id = row["session_id"] or "main"
+
+        created_thread = await asyncio.to_thread(
+            db_create_thread,
+            thread_id=thread_id,
+            name=thread_name,
+            parent_message_id=message_id,
+            parent_session_id=parent_session_id,
+            initial_summary=initial_summary,
+        )
+
+        proposal_data["status"] = "accepted"
+        proposal_data["thread_id"] = thread_id
+        await asyncio.to_thread(db_update_message_proposal, message_id, proposal_data)
+
+        # If suggested_first_turn was provided, seed the thread
+        suggested = proposal_data.get("suggested_first_turn")
+        if suggested:
+            await asyncio.to_thread(
+                db_add_message,
+                message_id=str(uuid.uuid4()),
+                session_id=thread_id,
+                role="assistant",
+                content=suggested,
+            )
+
+        return {"status": "accepted", "thread": created_thread, "proposal": proposal_data}
+
+    else:
+        proposal_data["status"] = "declined"
+        await asyncio.to_thread(db_update_message_proposal, message_id, proposal_data)
+        return {"status": "declined", "proposal": proposal_data}
+
+
+@app.get("/api/navigation/links")
+async def get_navigation_links_endpoint(limit: int = 50):
+    """
+    Extracts all URLs and markdown links shared across messages.
+    """
+    links = await asyncio.to_thread(db_get_extracted_links, limit)
+    return {"links": links}
+
+
+@app.get("/api/navigation/chronology")
+async def get_navigation_chronology_endpoint(limit: int = 50):
+    """
+    Returns unified chronological events across threads, links, and vault activity.
+    """
+    events = await asyncio.to_thread(db_get_chronology_events, limit)
+    return {"events": events}
 
 
 # ==============================================================================

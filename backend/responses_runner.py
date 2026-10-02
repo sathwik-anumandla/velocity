@@ -127,6 +127,36 @@ SEARCH_PAST_CONVERSATIONS_TOOL_DEFINITION = {
     },
 }
 
+PROPOSE_SIDE_CHAT_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "propose_side_chat",
+    "description": (
+        "Propose branching a complex, multi-turn, or deep technical task into a dedicated Side Chat (thread) "
+        "to keep Sathwik's main timeline clean. Use this when the request requires deep iterative debugging, "
+        "large multi-file code generation, or extensive research exploration. "
+        "State your reason and proposed title clearly."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "Short, clean 3-5 word title for the side chat, e.g. 'PostgreSQL WAL Optimization'.",
+            },
+            "reason": {
+                "type": "string",
+                "description": "Brief explanation of why this warrants a side chat (e.g. 'Requires multi-step config tuning and benchmark iterations').",
+            },
+            "suggested_first_turn": {
+                "type": "string",
+                "description": "Initial analysis or high-level outline to start the side chat with.",
+            },
+        },
+        "required": ["title", "reason"],
+        "additionalProperties": False,
+    },
+}
+
 CONSULT_MEMORY_TOOL_DEFINITION = {
     "type": "function",
     "name": "consult_memory",
@@ -174,6 +204,7 @@ class ResponsesRunner:
         verbosity: str = "low",
         model: Optional[str] = None,
         is_temporary: bool = False,
+        is_thread: bool = False,
         max_tool_hops: int = 5,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
@@ -209,8 +240,13 @@ class ResponsesRunner:
             tools.append(SEARCH_PAST_CONVERSATIONS_TOOL_DEFINITION)
             tools.append(CONSULT_MEMORY_TOOL_DEFINITION)
 
+        # Side Chat proposal tool (available on main timeline only)
+        if not is_thread:
+            tools.append(PROPOSE_SIDE_CHAT_TOOL_DEFINITION)
+
         full_assistant_text = ""
         total_usage: Dict[str, Any] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+        last_proposal: Optional[Dict[str, Any]] = None
         thinking_emitted = False
 
         for hop in range(max_tool_hops):
@@ -530,6 +566,45 @@ class ResponsesRunner:
                         "data": json.dumps({"tool": "read_mental_model", "result": result_msg}),
                     }
 
+                elif fn_name == "propose_side_chat":
+                    title, reason, suggested_first_turn = "", "", ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        title = parsed_args.get("title", "Side Chat")
+                        reason = parsed_args.get("reason", "")
+                        suggested_first_turn = parsed_args.get("suggested_first_turn", "")
+                    except Exception:
+                        title = "Side Chat"
+
+                    proposal_data = {
+                        "title": title,
+                        "reason": reason,
+                        "suggested_first_turn": suggested_first_turn,
+                        "status": "pending",
+                    }
+                    last_proposal = proposal_data
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Proposing side chat"}),
+                    }
+                    yield {
+                        "event": "thread_proposal",
+                        "data": json.dumps(proposal_data),
+                    }
+
+                    tool_output = (
+                        f"[Proposed side chat '{title}' to Sathwik. "
+                        "A proposal card is now displayed in the UI. "
+                        "Provide a brief 1-2 sentence overview of why branching here keeps things clean "
+                        "and what will be tackled in the side chat.]"
+                    )
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "propose_side_chat", "result": f"Proposed: {title}"}),
+                    }
+
                 else:
                     tool_output = f"[Unknown tool: {fn_name}]"
 
@@ -547,10 +622,14 @@ class ResponsesRunner:
                 })
 
         # Completed all iterations
+        done_payload: Dict[str, Any] = {
+            "text": full_assistant_text,
+            "usage": total_usage,
+        }
+        if last_proposal:
+            done_payload["thread_proposal"] = last_proposal
+
         yield {
             "event": "done",
-            "data": json.dumps({
-                "text": full_assistant_text,
-                "usage": total_usage,
-            }),
+            "data": json.dumps(done_payload),
         }

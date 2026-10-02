@@ -5,8 +5,9 @@ Temporary sessions are ephemeral and intentionally NOT persisted here.
 """
 
 import os
+import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 DEFAULT_DB_PATH = "./data/velocity.db"
@@ -65,6 +66,16 @@ def init_db() -> None:
         cursor.execute("ALTER TABLE sessions ADD COLUMN summary TEXT DEFAULT NULL;")
     if "last_tokens" not in existing_cols:
         cursor.execute("ALTER TABLE sessions ADD COLUMN last_tokens INTEGER DEFAULT 0;")
+    if "is_thread" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN is_thread INTEGER NOT NULL DEFAULT 0;")
+    if "parent_session_id" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN parent_session_id TEXT DEFAULT NULL;")
+    if "parent_message_id" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN parent_message_id TEXT DEFAULT NULL;")
+    if "status" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'active';")
+    if "rollup_summary" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN rollup_summary TEXT DEFAULT NULL;")
 
     # 2. Messages table
     cursor.execute("""
@@ -74,16 +85,31 @@ def init_db() -> None:
         role TEXT NOT NULL,
         content TEXT NOT NULL,
         memory_status TEXT DEFAULT 'ok',
+        thread_id TEXT DEFAULT NULL,
+        thread_proposal TEXT DEFAULT NULL,
         created_at TEXT NOT NULL,
         FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     );
     """)
 
-    # Ensure messages table has memory_status (for older DB schemas)
+    # Ensure messages table has all columns (for older DB schemas)
     cursor.execute("PRAGMA table_info(messages);")
     existing_msg_cols = [col[1] for col in cursor.fetchall()]
     if "memory_status" not in existing_msg_cols:
         cursor.execute("ALTER TABLE messages ADD COLUMN memory_status TEXT DEFAULT 'ok';")
+    if "thread_id" not in existing_msg_cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN thread_id TEXT DEFAULT NULL;")
+    if "thread_proposal" not in existing_msg_cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN thread_proposal TEXT DEFAULT NULL;")
+
+    # Ensure canonical main timeline session exists
+    cursor.execute("SELECT id FROM sessions WHERE id = 'main';")
+    if not cursor.fetchone():
+        now_iso = datetime.now(timezone.utc).isoformat()
+        cursor.execute("""
+        INSERT INTO sessions (id, name, recall_budget, thinking_effort, verbosity, model, is_thread, status, created_at, updated_at)
+        VALUES ('main', 'Velocity', 'medium', 'medium', 'low', 'gpt-5.4-mini', 0, 'active', ?, ?);
+        """, (now_iso, now_iso))
 
     # 3. FTS5 Virtual Table for full-text message search
     cursor.execute("""
@@ -277,9 +303,11 @@ def add_message(
     role: str,
     content: str,
     memory_status: str = "ok",
+    thread_id: Optional[str] = None,
+    thread_proposal: Optional[str] = None,
 ) -> Dict[str, Any]:
     conn = get_connection()
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     cursor = conn.cursor()
 
     # Touch session updated_at
@@ -290,10 +318,10 @@ def add_message(
 
     cursor.execute(
         """
-        INSERT INTO messages (id, session_id, role, content, memory_status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO messages (id, session_id, role, content, memory_status, thread_id, thread_proposal, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (message_id, session_id, role, content, memory_status, now),
+        (message_id, session_id, role, content, memory_status, thread_id, thread_proposal, now),
     )
     conn.commit()
     conn.close()
@@ -304,8 +332,276 @@ def add_message(
         "role": role,
         "content": content,
         "memory_status": memory_status,
+        "thread_id": thread_id,
+        "thread_proposal": thread_proposal,
         "created_at": now,
     }
+
+
+def list_threads(status: Optional[str] = None) -> List[Dict[str, Any]]:
+    """
+    Lists all side chats (threads), along with message count and latest message timestamp.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    sql = """
+    SELECT
+        s.id,
+        s.name,
+        s.parent_session_id,
+        s.parent_message_id,
+        s.status,
+        s.rollup_summary,
+        s.model,
+        s.created_at,
+        s.updated_at,
+        COUNT(m.id) AS message_count
+    FROM sessions s
+    LEFT JOIN messages m ON s.id = m.session_id
+    WHERE s.is_thread = 1
+    """
+    params: List[Any] = []
+    if status:
+        sql += " AND s.status = ?"
+        params.append(status)
+
+    sql += " GROUP BY s.id ORDER BY s.updated_at DESC"
+
+    cursor.execute(sql, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def create_thread(
+    thread_id: str,
+    name: str,
+    parent_message_id: Optional[str] = None,
+    parent_session_id: str = "main",
+    model: str = "gpt-5.4-mini",
+    initial_summary: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Creates a new side chat (thread) row.
+    """
+    conn = get_connection()
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO sessions (
+            id, name, recall_budget, thinking_effort, verbosity, model,
+            is_thread, parent_session_id, parent_message_id, status, rollup_summary,
+            created_at, updated_at
+        ) VALUES (?, ?, 'medium', 'high', 'high', ?, 1, ?, ?, 'active', ?, ?, ?)
+        """,
+        (thread_id, name, model, parent_session_id, parent_message_id, initial_summary, now, now),
+    )
+    conn.commit()
+    conn.close()
+
+    return {
+        "id": thread_id,
+        "name": name,
+        "is_thread": 1,
+        "parent_session_id": parent_session_id,
+        "parent_message_id": parent_message_id,
+        "status": "active",
+        "rollup_summary": initial_summary,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def update_thread(
+    thread_id: str,
+    name: Optional[str] = None,
+    status: Optional[str] = None,
+    rollup_summary: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    now = datetime.now(timezone.utc).isoformat()
+
+    updates = []
+    params = []
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if status is not None:
+        updates.append("status = ?")
+        params.append(status)
+    if rollup_summary is not None:
+        updates.append("rollup_summary = ?")
+        params.append(rollup_summary)
+
+    if not updates:
+        conn.close()
+        return get_thread(thread_id)
+
+    updates.append("updated_at = ?")
+    params.append(now)
+    params.append(thread_id)
+
+    sql = f"UPDATE sessions SET {', '.join(updates)} WHERE id = ? AND is_thread = 1"
+    cursor.execute(sql, tuple(params))
+    conn.commit()
+    conn.close()
+    return get_thread(thread_id)
+
+
+def get_thread(thread_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT
+        s.*,
+        COUNT(m.id) AS message_count
+    FROM sessions s
+    LEFT JOIN messages m ON s.id = m.session_id
+    WHERE s.id = ? AND s.is_thread = 1
+    GROUP BY s.id
+    """, (thread_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_message_proposal(message_id: str, proposal_data: Dict[str, Any]) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE messages SET thread_proposal = ? WHERE id = ?",
+        (json.dumps(proposal_data), message_id),
+    )
+    conn.commit()
+    success = cursor.rowcount > 0
+    conn.close()
+    return success
+
+
+def get_extracted_links(limit: int = 100) -> List[Dict[str, Any]]:
+    """
+    Extracts all markdown links and URLs found across messages in chronological order.
+    """
+    import re
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT m.id AS message_id, m.session_id, s.name AS session_name, s.is_thread, m.content, m.created_at
+    FROM messages m
+    JOIN sessions s ON m.session_id = s.id
+    WHERE m.content LIKE '%http%'
+    ORDER BY m.created_at DESC
+    LIMIT ?
+    """, (limit * 2,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    md_link_regex = re.compile(r'\[([^\]]+)\]\((https?://[^\s\)]+)\)')
+    raw_url_regex = re.compile(r'(https?://[^\s\)\>\]]+)')
+
+    results: List[Dict[str, Any]] = []
+    seen_urls = set()
+
+    for r in rows:
+        content = r["content"]
+        # Extract markdown links first
+        for title, url in md_link_regex.findall(content):
+            if url not in seen_urls:
+                seen_urls.add(url)
+                results.append({
+                    "url": url,
+                    "title": title.strip() or url,
+                    "message_id": r["message_id"],
+                    "session_id": r["session_id"],
+                    "session_name": r["session_name"],
+                    "is_thread": bool(r["is_thread"]),
+                    "created_at": r["created_at"],
+                })
+
+        # Extract raw URLs that were not part of markdown links
+        for url in raw_url_regex.findall(content):
+            clean_url = url.rstrip(".,;:)")
+            if clean_url not in seen_urls:
+                seen_urls.add(clean_url)
+                results.append({
+                    "url": clean_url,
+                    "title": clean_url,
+                    "message_id": r["message_id"],
+                    "session_id": r["session_id"],
+                    "session_name": r["session_name"],
+                    "is_thread": bool(r["is_thread"]),
+                    "created_at": r["created_at"],
+                })
+
+        if len(results) >= limit:
+            break
+
+    return results
+
+
+def get_chronology_events(limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    Combines thread lifecycle milestones, shared links, and vault activity logs into
+    a unified chronological stream (newest first).
+    """
+    events: List[Dict[str, Any]] = []
+
+    # 1. Thread creation and conclusion events
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT id, name, status, rollup_summary, created_at, updated_at
+    FROM sessions
+    WHERE is_thread = 1
+    ORDER BY updated_at DESC
+    LIMIT ?
+    """, (limit,))
+    threads = cursor.fetchall()
+    conn.close()
+
+    for t in threads:
+        events.append({
+            "type": "thread_event",
+            "title": f"Thread: {t['name']}",
+            "description": t["rollup_summary"] or f"Side chat status: {t['status']}",
+            "status": t["status"],
+            "timestamp": t["updated_at"] or t["created_at"],
+            "metadata": {"thread_id": t["id"]},
+        })
+
+    # 2. Extracted links
+    links = get_extracted_links(limit=limit)
+    for l in links:
+        events.append({
+            "type": "link_event",
+            "title": l["title"],
+            "description": f"Shared in {l['session_name']}",
+            "timestamp": l["created_at"],
+            "metadata": {"url": l["url"], "session_id": l["session_id"]},
+        })
+
+    # 3. Vault activity log entries
+    try:
+        from backend.vault import get_activity_log
+        vault_logs = get_activity_log(limit=limit)
+        for vl in vault_logs:
+            events.append({
+                "type": "vault_event",
+                "title": f"Memory: {vl.get('action', 'UPDATE')} {vl.get('path', '')}",
+                "description": vl.get("detail", ""),
+                "timestamp": vl.get("timestamp", ""),
+                "metadata": {"source": vl.get("source", "SYSTEM"), "path": vl.get("path", "")},
+            })
+    except Exception:
+        pass
+
+    # Sort all events newest first
+    events.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
+    return events[:limit]
 
 
 def get_messages(session_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
