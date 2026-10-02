@@ -215,8 +215,14 @@ export async function streamChatTurn(
               const toolName = data.tool || 'tool';
               if (toolName === 'tavily_search') {
                 handlers.onStatus?.('Searching');
-              } else if (toolName === 'consult_memory') {
-                handlers.onStatus?.('Consulting memory');
+              } else if (toolName === 'consult_memory' || toolName === 'search_past_conversations') {
+                handlers.onStatus?.('Searching past conversations');
+              } else if (toolName === 'read_memory_doc') {
+                handlers.onStatus?.('Reading memory');
+              } else if (toolName === 'update_memory_section') {
+                handlers.onStatus?.('Updating memory');
+              } else if (toolName === 'create_memory_doc') {
+                handlers.onStatus?.('Creating memory doc');
               } else if (toolName === 'read_mental_model') {
                 handlers.onStatus?.('Fetching mental model');
               }
@@ -278,5 +284,57 @@ export async function reflectMemory(query: string, budget: string = 'mid'): Prom
   });
   if (!res.ok) throw new Error(`Reflect failed: ${res.status}`);
   return res.json();
+}
+
+export interface VaultTreeItem {
+  path: string;
+  name: string;
+  title: string;
+  category: string;
+  size_bytes: number;
+  updated_at: string;
+}
+
+export interface ActivityLogEntry {
+  timestamp: string;
+  source: string;
+  action: string;
+  path: string;
+  detail: string;
+}
+
+export async function getVaultTree(): Promise<VaultTreeItem[]> {
+  const res = await fetch(`${API_BASE}/api/memory/tree`);
+  if (!res.ok) throw new Error(`Failed to load vault tree: ${res.status}`);
+  const data = await res.json();
+  return data.tree || [];
+}
+
+export async function getVaultDoc(path: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/memory/doc?path=${encodeURIComponent(path)}`);
+  if (!res.ok) throw new Error(`Failed to load doc: ${res.status}`);
+  const data = await res.json();
+  return data.content || '';
+}
+
+export async function saveVaultDoc(path: string, content: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/api/memory/doc`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, content }),
+  });
+  return res.ok;
+}
+
+export async function getVaultActivity(limit: number = 50): Promise<ActivityLogEntry[]> {
+  const res = await fetch(`${API_BASE}/api/memory/activity?limit=${limit}`);
+  if (!res.ok) throw new Error(`Failed to load activity: ${res.status}`);
+  const data = await res.json();
+  return data.entries || [];
+}
+
+export async function triggerVaultSynthesis(): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/api/memory/synthesis`, { method: 'POST' });
+  return res.ok;
 }
 

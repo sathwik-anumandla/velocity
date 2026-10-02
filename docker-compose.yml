@@ -62,6 +62,7 @@ services:
     volumes:
       - .:/app
       - velocity-sqlite-data:/app/data
+      - ./data/memory:/app/data/memory
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}

@@ -244,7 +244,20 @@ def compose_responses_input(
     Returns:
     (instructions, input_items)
     """
+    from backend.vault import get_core_context
+
     instructions = load_system_prompt()
+
+    # Direct, Sharp Peer persona grounding
+    instructions += (
+        "\n\n[Persona Directive - Direct, Sharp Peer]:\n"
+        "- Default length: 1 to 3 punchy, high-signal sentences for conversational turns, questions, and acknowledgments.\n"
+        "- Zero conversational filler: Never say 'Certainly!', 'I would be glad to help', 'Great question', or performative pleasantries.\n"
+        "- Zero unprompted lists: Avoid robotic bulleted lists unless explicitly asked, comparing distinct options, or providing ordered steps.\n"
+        "- Selective depth: When Sathwik explicitly asks for code, architecture, or deep explanations, provide complete technical depth, but skip summarizing conclusions and introductory fluff.\n"
+        "- Tone: Speak like a brilliant, trusted engineering peer messaging on Slack or Telegram. Direct, dry, and perceptive."
+    )
+
     if verbosity == "low":
         instructions += (
             "\n\n[Verbosity Directive]: Respond with Low / Concise verbosity. "
@@ -258,18 +271,24 @@ def compose_responses_input(
             "maintaining natural conversational paragraphs."
         )
 
-    # Inject persistent hot mental models into instructions
-    if hot_memory:
-        user_persona = hot_memory.get("user-persona")
-        if user_persona and user_persona.strip():
-            instructions += (
-                f"\n\n[Persistent Memory - User Persona & Philosophy]:\n{user_persona.strip()}"
-            )
-        current_context = hot_memory.get("current-context")
-        if current_context and current_context.strip():
-            instructions += (
-                f"\n\n[Persistent Memory - Current Context & Open Loops]:\n{current_context.strip()}"
-            )
+    # Inject deterministic memory vault context (profile, preferences, active context, dossiers index)
+    try:
+        core_vault_context = get_core_context()
+        if core_vault_context:
+            instructions += f"\n\n{core_vault_context}"
+    except Exception as e:
+        # Fallback to hot mental models if vault read fails
+        if hot_memory:
+            user_persona = hot_memory.get("user-persona")
+            if user_persona and user_persona.strip():
+                instructions += (
+                    f"\n\n[Persistent Memory - User Persona & Philosophy]:\n{user_persona.strip()}"
+                )
+            current_context = hot_memory.get("current-context")
+            if current_context and current_context.strip():
+                instructions += (
+                    f"\n\n[Persistent Memory - Current Context & Open Loops]:\n{current_context.strip()}"
+                )
 
     input_items: List[Dict[str, Any]] = []
 

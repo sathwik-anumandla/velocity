@@ -19,6 +19,11 @@ from dotenv import load_dotenv
 import openai
 from backend.tavily_tool import TavilySearchTool, TAVILY_TOOL_DEFINITION
 from backend.hindsight import HindsightClient
+from backend.vault import (
+    read_memory_doc as vault_read_doc,
+    update_memory_section as vault_update_section,
+    create_memory_doc as vault_create_doc,
+)
 
 load_dotenv()
 
@@ -27,20 +32,94 @@ logger = logging.getLogger("velocity.runner")
 # Sentence boundary patterns: period/exclamation/question mark followed by space or newline, or double newline
 SENTENCE_BOUNDARY_PATTERN = re.compile(r'([.?!](\s+|$))|(\n\n)')
 
-CONSULT_MEMORY_TOOL_DEFINITION = {
+READ_MEMORY_DOC_TOOL_DEFINITION = {
     "type": "function",
-    "name": "consult_memory",
+    "name": "read_memory_doc",
     "description": (
-        "Retrieve relevant past decisions, preferences, and facts from long-term memory in Hindsight. "
-        "Use this when the user asks about past topics, architecture decisions, previous discussions, "
-        "or when you need factual historical context beyond the immediate session."
+        "Read a specific markdown document from the deterministic memory vault. "
+        "Use this when Sathwik mentions or asks about specific projects (e.g. 'projects/velocity.md'), "
+        "study areas ('study/dsa.md'), topic dossiers ('topics/...'), or people ('people/directory.md')."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Relative path of the document in the vault, e.g. 'projects/velocity.md' or 'study/dsa.md'.",
+            }
+        },
+        "required": ["path"],
+        "additionalProperties": False,
+    },
+}
+
+UPDATE_MEMORY_SECTION_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "update_memory_section",
+    "description": (
+        "Update or add a designated section inside an existing memory vault document. "
+        "Replaces only the target section heading and its body, preserving the rest of the document. "
+        "Use when Sathwik updates preferences, changes a tech stack choice, finishes a task, or sets a new priority."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Relative path of the document, e.g. 'core/tech_stack.md', 'core/preferences.md', or 'core/active_context.md'.",
+            },
+            "section": {
+                "type": "string",
+                "description": "Markdown heading of the section to update or create, e.g. 'Primary Languages & Frameworks', 'Immediate Focus', or 'Backend'.",
+            },
+            "content": {
+                "type": "string",
+                "description": "The updated markdown content body for this section.",
+            },
+        },
+        "required": ["path", "section", "content"],
+        "additionalProperties": False,
+    },
+}
+
+CREATE_MEMORY_DOC_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "create_memory_doc",
+    "description": (
+        "Create a brand new markdown document in the memory vault. "
+        "Use when Sathwik starts a distinct new project (e.g. 'projects/new_project.md') or explicitly asks to create a new topic dossier."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": "Relative path for the new document, e.g. 'projects/new_app.md' or 'topics/neuroscience.md'.",
+            },
+            "content": {
+                "type": "string",
+                "description": "Full initial markdown content with proper headings.",
+            },
+        },
+        "required": ["path", "content"],
+        "additionalProperties": False,
+    },
+}
+
+SEARCH_PAST_CONVERSATIONS_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "search_past_conversations",
+    "description": (
+        "Search past conversation history and episodic memory in Hindsight. "
+        "Use when Sathwik asks about past discussions, previous bugs, past decisions made in conversations, "
+        "or when you need temporal historical context."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "query": {
                 "type": "string",
-                "description": "The search query or topic to look up in past memory.",
+                "description": "The search query to look up in past conversation logs.",
             }
         },
         "required": ["query"],
@@ -48,34 +127,11 @@ CONSULT_MEMORY_TOOL_DEFINITION = {
     },
 }
 
-READ_MENTAL_MODEL_TOOL_DEFINITION = {
+CONSULT_MEMORY_TOOL_DEFINITION = {
     "type": "function",
-    "name": "read_mental_model",
-    "description": (
-        "Read a standing, pre-synthesized knowledge document from Hindsight memory. "
-        "Available models: "
-        "'projects-and-decisions' (detailed architecture, stack, technical decisions & rationale for projects), "
-        "'goals-and-interests' (long-term goals, curiosity topics, and research directions), "
-        "'current-context' (active focus, open loops, and immediate objectives), "
-        "'user-persona' (user communication taste, philosophy, and aesthetic preferences)."
-    ),
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "model_name": {
-                "type": "string",
-                "enum": [
-                    "projects-and-decisions",
-                    "goals-and-interests",
-                    "current-context",
-                    "user-persona",
-                ],
-                "description": "The ID of the mental model to retrieve.",
-            }
-        },
-        "required": ["model_name"],
-        "additionalProperties": False,
-    },
+    "name": "consult_memory",
+    "description": SEARCH_PAST_CONVERSATIONS_TOOL_DEFINITION["description"],
+    "parameters": SEARCH_PAST_CONVERSATIONS_TOOL_DEFINITION["parameters"],
 }
 
 
@@ -143,9 +199,15 @@ class ResponsesRunner:
         if self.tavily.is_configured:
             tools.append(TAVILY_TOOL_DEFINITION)
 
+        # Deterministic Memory Vault tools
+        tools.append(READ_MEMORY_DOC_TOOL_DEFINITION)
+        tools.append(UPDATE_MEMORY_SECTION_TOOL_DEFINITION)
+        tools.append(CREATE_MEMORY_DOC_TOOL_DEFINITION)
+
+        # Episodic Hindsight tools
         if self.hindsight.check_health():
+            tools.append(SEARCH_PAST_CONVERSATIONS_TOOL_DEFINITION)
             tools.append(CONSULT_MEMORY_TOOL_DEFINITION)
-            tools.append(READ_MENTAL_MODEL_TOOL_DEFINITION)
 
         full_assistant_text = ""
         total_usage: Dict[str, Any] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
@@ -310,7 +372,100 @@ class ResponsesRunner:
                         "data": json.dumps({"tool": "tavily_search"}),
                     }
 
-                elif fn_name == "consult_memory":
+                elif fn_name == "read_memory_doc":
+                    path = ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        path = parsed_args.get("path", "")
+                    except Exception:
+                        path = fn_args_raw
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Reading memory"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "read_memory_doc", "query": path}),
+                    }
+
+                    doc_content = await loop.run_in_executor(None, vault_read_doc, path)
+                    if doc_content is not None:
+                        tool_output = f"[Document '{path}']:\n{doc_content}"
+                        result_msg = f"Read {len(doc_content)} chars"
+                    else:
+                        tool_output = f"[Document '{path}' not found in memory vault]"
+                        result_msg = "Not found"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "read_memory_doc", "result": result_msg}),
+                    }
+
+                elif fn_name == "update_memory_section":
+                    path, section, content = "", "", ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        path = parsed_args.get("path", "")
+                        section = parsed_args.get("section", "")
+                        content = parsed_args.get("content", "")
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Updating memory"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "update_memory_section", "query": f"{path} -> ## {section}"}),
+                    }
+
+                    success = await vault_update_section(path, section, content, source="CONVERSATION")
+                    if success:
+                        tool_output = f"[Successfully updated section '## {section}' in '{path}']"
+                        result_msg = "Updated"
+                    else:
+                        tool_output = f"[Failed to update section '## {section}' in '{path}']"
+                        result_msg = "Failed"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "update_memory_section", "result": result_msg}),
+                    }
+
+                elif fn_name == "create_memory_doc":
+                    path, content = "", ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        path = parsed_args.get("path", "")
+                        content = parsed_args.get("content", "")
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Creating memory doc"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "create_memory_doc", "query": path}),
+                    }
+
+                    success = await vault_create_doc(path, content, source="CONVERSATION")
+                    if success:
+                        tool_output = f"[Successfully created memory document '{path}']"
+                        result_msg = "Created"
+                    else:
+                        tool_output = f"[Document '{path}' already exists or failed to create]"
+                        result_msg = "Exists/Failed"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "create_memory_doc", "result": result_msg}),
+                    }
+
+                elif fn_name in ("search_past_conversations", "consult_memory"):
                     query = ""
                     try:
                         parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
@@ -320,11 +475,11 @@ class ResponsesRunner:
 
                     yield {
                         "event": "status",
-                        "data": json.dumps({"text": "Consulting memory"}),
+                        "data": json.dumps({"text": "Searching past conversations"}),
                     }
                     yield {
                         "event": "tool_start",
-                        "data": json.dumps({"tool": "consult_memory", "query": f"Consulting memory: {query}"}),
+                        "data": json.dumps({"tool": fn_name, "query": f"Searching logs: {query}"}),
                     }
 
                     memories, status = await loop.run_in_executor(
@@ -333,12 +488,14 @@ class ResponsesRunner:
                     if memories:
                         facts_text = "\n".join(f"- {m}" for m in memories)
                         tool_output = f"[Hindsight Memories Found]:\n{facts_text}"
+                        result_msg = f"{len(memories)} memories found"
                     else:
                         tool_output = "[No specific memories found for this query in Hindsight]"
+                        result_msg = "No memories found"
 
                     yield {
                         "event": "tool_done",
-                        "data": json.dumps({"tool": "consult_memory"}),
+                        "data": json.dumps({"tool": fn_name, "result": result_msg}),
                     }
 
                 elif fn_name == "read_mental_model":
@@ -355,7 +512,7 @@ class ResponsesRunner:
                     }
                     yield {
                         "event": "tool_start",
-                        "data": json.dumps({"tool": "read_mental_model", "query": f"Reading mental model: {model_name}"}),
+                        "data": json.dumps({"tool": "read_mental_model", "query": f"Reading: {model_name}"}),
                     }
 
                     content = await loop.run_in_executor(
@@ -363,12 +520,14 @@ class ResponsesRunner:
                     )
                     if content:
                         tool_output = f"[Mental Model '{model_name}']:\n{content}"
+                        result_msg = "Ready"
                     else:
                         tool_output = f"[Mental Model '{model_name}' is not yet available or empty]"
+                        result_msg = "Empty"
 
                     yield {
                         "event": "tool_done",
-                        "data": json.dumps({"tool": "read_mental_model"}),
+                        "data": json.dumps({"tool": "read_mental_model", "result": result_msg}),
                     }
 
                 else:

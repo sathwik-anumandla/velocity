@@ -48,6 +48,16 @@ from backend.prompt import (
 )
 import openai
 from backend.responses_runner import ResponsesRunner
+from backend.vault import (
+    seed_vault_if_needed,
+    get_vault_tree,
+    read_memory_doc,
+    write_memory_doc,
+    update_memory_section,
+    create_memory_doc,
+    get_activity_log,
+    log_activity,
+)
 
 load_dotenv()
 
@@ -105,12 +115,117 @@ hindsight_client = HindsightClient()
 responses_runner = ResponsesRunner(hindsight=hindsight_client)
 
 
+async def run_nightly_vault_synthesis(hindsight: HindsightClient) -> Dict[str, Any]:
+    """
+    Synthesizes daily insights into the deterministic Markdown Vault:
+    1. Reads active_context.md and profile.
+    2. Queries recent memories/observations from Hindsight.
+    3. Calls gpt-5.4-mini with a structured synthesis prompt.
+    4. Updates vault sections and logs to activity.log.
+    """
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    base_url = (os.getenv("OPENAI_BASE_URL", "") or "https://api.openai.com/v1").strip().rstrip("/")
+    cheap_model = (os.getenv("SYNTHESIS_MODEL_ID") or os.getenv("CLASSIFIER_MODEL_ID") or "gpt-5.4-mini").strip()
+
+    if not api_key:
+        logger.warning("[Nightly Synthesis] OPENAI_API_KEY not configured, skipping synthesis.")
+        return {"status": "skipped", "reason": "no_api_key"}
+
+    logger.info(f"[Nightly Synthesis] Starting vault synthesis with model [{cheap_model}]...")
+
+    try:
+        memories, status = await asyncio.to_thread(
+            hindsight.recall, "today's tasks, priorities, progress, open loops, and key topics", "high", 10
+        )
+        memories_text = "\n".join(f"- {m}" for m in memories) if memories else "No new memories retrieved."
+
+        current_active = await asyncio.to_thread(read_memory_doc, "core/active_context.md") or ""
+
+        synthesis_prompt = f"""You are the Velocity Nightly Memory Synthesizer.
+Review the following recent memories and the current active context for Sathwik.
+Identify:
+1. Are there any completed tasks or newly opened priorities for active_context.md?
+2. Did any project state change?
+3. Was there a deep discussion on a new intellectual topic that warrants a new dossier?
+
+Memories Retrieved:
+{memories_text}
+
+Current active_context.md:
+{current_active}
+
+Output your response ONLY as a JSON array of actions with this schema:
+[
+  {{
+    "action": "update_section",
+    "path": "core/active_context.md",
+    "section": "Immediate Focus",
+    "content": "new markdown content"
+  }}
+]
+If no updates are needed, output strictly: []
+Do not include markdown fences, backticks, or any other text outside the JSON array."""
+
+        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        is_reasoning = any(m in cheap_model.lower() for m in ["o1", "o3", "o4", "gpt-5"])
+        kwargs: Dict[str, Any] = {
+            "model": cheap_model,
+            "messages": [{"role": "user", "content": synthesis_prompt}],
+            "max_completion_tokens": 1000,
+        }
+        if is_reasoning:
+            kwargs["reasoning_effort"] = "low"
+        else:
+            kwargs["temperature"] = 0.2
+
+        response = await asyncio.to_thread(client.chat.completions.create, **kwargs)
+        raw_output = response.choices[0].message.content.strip()
+
+        clean_json = raw_output
+        if clean_json.startswith("```"):
+            clean_json = re.sub(r"^```(?:json)?\n", "", clean_json)
+            clean_json = re.sub(r"\n```$", "", clean_json)
+
+        actions = json.loads(clean_json)
+        applied_count = 0
+        if isinstance(actions, list):
+            for act in actions:
+                action_type = act.get("action")
+                path = act.get("path")
+                if action_type == "update_section" and path:
+                    sec = act.get("section", "Immediate Focus")
+                    content = act.get("content", "")
+                    if sec and content:
+                        ok = await update_memory_section(path, sec, content, source="NIGHTLY_SYNTHESIS")
+                        if ok:
+                            applied_count += 1
+                elif action_type == "create_doc" and path:
+                    content = act.get("content", "")
+                    if content:
+                        ok = await create_memory_doc(path, content, source="NIGHTLY_SYNTHESIS")
+                        if ok:
+                            applied_count += 1
+
+        await log_activity(
+            "NIGHTLY_SYNTHESIS",
+            "CYCLE_COMPLETE",
+            "data/memory",
+            f"Synthesized memory updates: {applied_count} actions applied",
+        )
+        logger.info(f"[Nightly Synthesis] Successfully applied {applied_count} memory actions.")
+        return {"status": "success", "actions_applied": applied_count}
+
+    except Exception as e:
+        logger.error(f"[Nightly Synthesis] Failed during synthesis: {e}", exc_info=True)
+        return {"status": "error", "error": str(e)}
+
+
 async def execute_dream_cycle(hindsight: HindsightClient) -> Dict[str, Any]:
     """
     Executes the nightly dreaming pass:
-    Triggers Hindsight memory consolidation to extract observations from retained facts.
-    Since foundational mental models are configured with 'refresh_after_consolidation: True',
-    Hindsight automatically refreshes each mental model upon consolidation completion.
+    1. Triggers Hindsight memory consolidation to extract observations from retained facts.
+    2. Runs nightly vault synthesis using gpt-5.4-mini to reconcile active_context,
+       update project statuses, and log to activity.log.
     """
     logger.info("[Dream Cycle] Starting scheduled offline memory consolidation...")
     consolidate_ok = await asyncio.to_thread(hindsight.consolidate)
@@ -118,9 +233,13 @@ async def execute_dream_cycle(hindsight: HindsightClient) -> Dict[str, Any]:
         f"[Dream Cycle] Consolidation request dispatched: success={consolidate_ok}. "
         "Mental models will auto-refresh natively in Hindsight once consolidation completes."
     )
+
+    # Run deterministic vault synthesis
+    synthesis_result = await run_nightly_vault_synthesis(hindsight)
+
     return {
         "consolidation": "dispatched" if consolidate_ok else "failed",
-        "mental_models": "auto_after_consolidation",
+        "synthesis": synthesis_result,
     }
 
 
@@ -172,6 +291,10 @@ async def lifespan(app: FastAPI):
         os.makedirs(db_dir, exist_ok=True)
     init_db()
     logger.info("Velocity Persistence initialized (SQLite + FTS5)")
+
+    # Seed and bootstrap deterministic memory vault from template if not present
+    await asyncio.to_thread(seed_vault_if_needed, hindsight_client)
+    logger.info("Deterministic Memory Vault checked/initialized")
 
     # Bootstrap Hindsight memory bank & foundational mental models in the background
     asyncio.create_task(asyncio.to_thread(hindsight_client.bootstrap_memory_bank))
@@ -744,6 +867,63 @@ async def reflect_memory(req: ReflectRequest):
     }
 
 
+class SaveDocRequest(BaseModel):
+    path: str
+    content: str
+
+
+@app.get("/api/memory/tree")
+async def get_vault_tree_endpoint():
+    """
+    Returns the structured catalog of documents in the deterministic memory vault.
+    """
+    tree = await asyncio.to_thread(get_vault_tree)
+    return {"tree": tree}
+
+
+@app.get("/api/memory/doc")
+async def get_memory_doc_endpoint(path: str = Query(..., description="Relative path in vault")):
+    """
+    Reads a document from the memory vault.
+    """
+    content = await asyncio.to_thread(read_memory_doc, path)
+    if content is None:
+        raise HTTPException(status_code=404, detail=f"Document '{path}' not found")
+    return {"path": path, "content": content}
+
+
+@app.put("/api/memory/doc")
+async def save_memory_doc_endpoint(req: SaveDocRequest):
+    """
+    Saves a document to the memory vault with atomic replacement.
+    """
+    success = await write_memory_doc(req.path, req.content, source="USER_UI", action="UPDATE")
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to save document")
+    return {"status": "ok", "path": req.path}
+
+
+@app.get("/api/memory/activity")
+async def get_memory_activity_endpoint(limit: int = 50):
+    """
+    Returns recent structured activity log entries from the memory vault.
+    """
+    entries = await asyncio.to_thread(get_activity_log, limit)
+    return {"entries": entries}
+
+
+@app.post("/api/memory/synthesis")
+async def trigger_vault_synthesis_endpoint():
+    """
+    Manually triggers the nightly memory vault synthesis in the background.
+    """
+    asyncio.create_task(run_nightly_vault_synthesis(hindsight_client))
+    return {
+        "status": "triggered",
+        "message": "Vault synthesis triggered in background."
+    }
+
+
 # ==============================================================================
 # Mobile Link & QR Code Setup Page
 # ==============================================================================
@@ -764,7 +944,7 @@ async def mobile_setup_page(request: Request):
 
     qr_container = "<div id='qrcode' class='qr-wrapper'></div>" if has_creds else ""
     copy_btn = f"<button class='btn' onclick='navigator.clipboard.writeText({json.dumps(payload)}); alert(`Copied connection payload to clipboard!`);'>Copy Connection Payload</button>" if has_creds else ""
-    warning_box = "" if has_creds else "<div class='warning'>⚠️ <b>Service Token not configured in .env</b><br><br>Add <code>CF_ACCESS_CLIENT_ID</code> and <code>CF_ACCESS_CLIENT_SECRET</code> to your VPS <code>/root/velocity/.env</code>, then restart the backend.</div>"
+    warning_box = "" if has_creds else "<div class='warning'><b>[Warning] Service Token not configured in .env</b><br><br>Add <code>CF_ACCESS_CLIENT_ID</code> and <code>CF_ACCESS_CLIENT_SECRET</code> to your VPS <code>/root/velocity/.env</code>, then restart the backend.</div>"
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en" class="dark">

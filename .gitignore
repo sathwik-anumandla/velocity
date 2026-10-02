@@ -42,6 +42,11 @@ data/*.db-wal
 *.db-shm
 *.db-wal
 
+# Memory Vault (Private personal memory docs kept off git)
+data/memory/
+!data/memory.template/
+!data/memory.template/*.log
+
 # Flutter & Dart
 .dart_tool/
 .pub-cache/
@@ -100,6 +105,7 @@ coverage/
 
 # Logs & Temporary Files
 *.log
+!data/memory.template/activity.log
 *.tmp
 *.bak
 

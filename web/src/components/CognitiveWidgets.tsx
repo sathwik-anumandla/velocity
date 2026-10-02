@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FC } from 'react';
-import { ChevronDown, ChevronRight, Copy, Check, Sparkles, Globe, Database, Brain, Cpu, Terminal } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Check, Sparkles, Globe, Database, Brain, Cpu, Terminal, FileText, Edit3, FilePlus, History } from 'lucide-react';
 import type { ToolCallState, AgenticStep } from '../types';
 import { highlightCode } from '../utils/prism';
 
@@ -77,8 +77,15 @@ export const ToolCallCard: FC<{ toolCall: ToolCallState }> = ({ toolCall }) => {
     switch (toolCall.tool) {
       case 'tavily_search':
         return <Globe className="w-3.5 h-3.5 text-zinc-400" />;
+      case 'read_memory_doc':
+        return <FileText className="w-3.5 h-3.5 text-zinc-400" />;
+      case 'update_memory_section':
+        return <Edit3 className="w-3.5 h-3.5 text-zinc-400" />;
+      case 'create_memory_doc':
+        return <FilePlus className="w-3.5 h-3.5 text-zinc-400" />;
+      case 'search_past_conversations':
       case 'consult_memory':
-        return <Database className="w-3.5 h-3.5 text-zinc-400" />;
+        return <History className="w-3.5 h-3.5 text-zinc-400" />;
       case 'read_mental_model':
         return <Brain className="w-3.5 h-3.5 text-zinc-400" />;
       default:
@@ -90,8 +97,15 @@ export const ToolCallCard: FC<{ toolCall: ToolCallState }> = ({ toolCall }) => {
     switch (toolCall.tool) {
       case 'tavily_search':
         return 'Web Search';
+      case 'read_memory_doc':
+        return 'Read Memory';
+      case 'update_memory_section':
+        return 'Update Memory';
+      case 'create_memory_doc':
+        return 'Create Memory';
+      case 'search_past_conversations':
       case 'consult_memory':
-        return 'Memory Recall';
+        return 'Search Logs';
       case 'read_mental_model':
         return 'Mental Model';
       default:
