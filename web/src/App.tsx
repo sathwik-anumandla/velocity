@@ -46,6 +46,7 @@ export function App() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
+  const isUserScrolledUpRef = useRef(false);
 
   // Dynamic Greeting state (contextual by time of day)
   const [greeting, setGreeting] = useState<string>(() => getGreetingForCurrentTime());
@@ -91,25 +92,28 @@ export function App() {
     if (!chatScrollRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = chatScrollRef.current;
     const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
-    setIsUserScrolledUp(distanceFromBottom > 120);
+    const scrolledUp = distanceFromBottom > 60;
+    isUserScrolledUpRef.current = scrolledUp;
+    setIsUserScrolledUp(scrolledUp);
   }, []);
 
-  // Scroll to bottom helper
+  // Scroll to bottom helper with stable reference
   const scrollToBottom = useCallback((force: boolean = false) => {
     if (chatScrollRef.current) {
-      if (!force && isUserScrolledUp) return;
+      if (!force && isUserScrolledUpRef.current) return;
       chatScrollRef.current.scrollTo({
         top: chatScrollRef.current.scrollHeight,
-        behavior: 'smooth',
+        behavior: force ? 'auto' : 'smooth',
       });
     }
-  }, [isUserScrolledUp]);
+  }, []);
 
+  // Auto-scroll when new content arrives while streaming, unless user has scrolled up to read
   useEffect(() => {
-    if (!isUserScrolledUp) {
+    if (isStreaming && !isUserScrolledUpRef.current) {
       scrollToBottom();
     }
-  }, [messages, isUserScrolledUp, scrollToBottom]);
+  }, [messages, isStreaming, scrollToBottom]);
 
   // Switch session: loads history for 'main' timeline or specific thread
   const handleSelectSession = useCallback(async (sessionId: string) => {
@@ -118,6 +122,7 @@ export function App() {
     localStorage.setItem('velocity-active-session', target);
     setCurrentSessionId(target);
     setIsTemporary(false);
+    isUserScrolledUpRef.current = false;
     setIsUserScrolledUp(false);
 
     if (target !== 'main') {
@@ -179,7 +184,8 @@ export function App() {
       mounted = false;
       clearInterval(interval);
     };
-  }, [handleSelectSession]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Conclude active side chat
   const handleConcludeActiveThread = useCallback(async () => {
@@ -332,6 +338,7 @@ export function App() {
 
     setMessages((prev) => [...prev, userMsg, asstMsg]);
     setIsStreaming(true);
+    isUserScrolledUpRef.current = false;
     setIsUserScrolledUp(false);
     setTimeout(() => scrollToBottom(true), 20);
 
@@ -815,6 +822,7 @@ export function App() {
                 <button
                   type="button"
                   onClick={() => {
+                    isUserScrolledUpRef.current = false;
                     setIsUserScrolledUp(false);
                     scrollToBottom(true);
                   }}
