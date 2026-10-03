@@ -41,6 +41,8 @@ class SessionResponse(BaseModel):
     thinking_effort: str
     verbosity: str = "low"
     model: str = "gpt-5.4-mini"
+    is_thread: Optional[int] = 0
+    parent_session_id: Optional[str] = None
     created_at: str
     updated_at: str
 

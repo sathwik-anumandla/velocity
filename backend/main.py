@@ -611,7 +611,8 @@ async def chat_stream(request: ChatRequest):
         thinking_effort = session["thinking_effort"]
         verbosity = session.get("verbosity", "low")
         model = session.get("model") or request.model or os.getenv("LLM_MODEL_ID", "gpt-5.4-mini")
-        history_messages = db_get_messages(session_id)
+        history_limit = 100 if session_id == "main" else None
+        history_messages = db_get_messages(session_id, limit=history_limit)
         current_summary = session.get("summary")
         last_tokens = session.get("last_tokens") or 0
 
@@ -1007,8 +1008,10 @@ async def synthesize_thread_rollup(thread: Dict[str, Any], messages: List[Dict[s
             thread_id=thread_id,
         )
         logger.info(f"Synthesized rollup for thread {thread_id}: {summary}")
+        return summary
     except Exception as e:
         logger.error(f"Error synthesizing thread rollup for {thread_id}: {e}")
+        return None
 
 
 @app.get("/api/threads")
@@ -1035,6 +1038,38 @@ async def create_thread_endpoint(req: ThreadCreate):
         model=req.model,
         initial_summary=req.initial_summary,
     )
+
+    if req.parent_message_id:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM messages WHERE id = ?", (req.parent_message_id,))
+        pm = cursor.fetchone()
+        if pm:
+            parent_sess = pm["session_id"]
+            if pm["role"] == "assistant":
+                cursor.execute("""
+                    SELECT * FROM messages
+                    WHERE session_id = ? AND role = 'user' AND created_at <= ?
+                    ORDER BY created_at DESC LIMIT 1
+                """, (parent_sess, pm["created_at"]))
+                user_msg = cursor.fetchone()
+                if user_msg:
+                    await asyncio.to_thread(
+                        db_add_message,
+                        message_id=str(uuid.uuid4()),
+                        session_id=thread_id,
+                        role="user",
+                        content=user_msg["content"],
+                    )
+            await asyncio.to_thread(
+                db_add_message,
+                message_id=str(uuid.uuid4()),
+                session_id=thread_id,
+                role=pm["role"],
+                content=pm["content"],
+            )
+        conn.close()
+
     return thread
 
 
@@ -1069,7 +1104,7 @@ async def update_thread_endpoint(thread_id: str, req: ThreadUpdate):
 @app.post("/api/threads/{thread_id}/rollup")
 async def trigger_thread_rollup_endpoint(thread_id: str, conclude: bool = False):
     """
-    Triggers background rollup synthesis for a side chat.
+    Triggers rollup synthesis for a side chat.
     """
     thread = await asyncio.to_thread(db_get_thread, thread_id)
     if not thread:
@@ -1081,10 +1116,11 @@ async def trigger_thread_rollup_endpoint(thread_id: str, conclude: bool = False)
             await asyncio.to_thread(db_update_thread, thread_id, status="concluded")
         return {"status": "ok", "message": "No messages in thread to synthesize."}
 
-    asyncio.create_task(synthesize_thread_rollup(thread, messages, conclude=conclude))
+    summary = await synthesize_thread_rollup(thread, messages, conclude=conclude)
     return {
-        "status": "triggered",
-        "message": "Thread rollup synthesis initiated in background.",
+        "status": "completed",
+        "summary": summary,
+        "message": "Thread rollup synthesized successfully.",
     }
 
 
@@ -1130,7 +1166,28 @@ async def respond_to_thread_proposal_endpoint(message_id: str, body: ProposalRes
         proposal_data["thread_id"] = thread_id
         await asyncio.to_thread(db_update_message_proposal, message_id, proposal_data)
 
-        # If suggested_first_turn was provided, seed the thread
+        # Look up originating user prompt that led to this proposal and seed the thread
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT content FROM messages
+            WHERE session_id = ? AND role = 'user' AND created_at <= ?
+            ORDER BY created_at DESC LIMIT 1
+        """, (parent_session_id, row["created_at"]))
+        user_row = cursor.fetchone()
+        conn.close()
+
+        originating_user_prompt = user_row["content"] if user_row else ""
+        if originating_user_prompt:
+            await asyncio.to_thread(
+                db_add_message,
+                message_id=str(uuid.uuid4()),
+                session_id=thread_id,
+                role="user",
+                content=originating_user_prompt,
+            )
+
+        # If suggested_first_turn was provided, seed the assistant response
         suggested = proposal_data.get("suggested_first_turn")
         if suggested:
             await asyncio.to_thread(
@@ -1139,6 +1196,14 @@ async def respond_to_thread_proposal_endpoint(message_id: str, body: ProposalRes
                 session_id=thread_id,
                 role="assistant",
                 content=suggested,
+            )
+        elif proposal_data.get("reason"):
+            await asyncio.to_thread(
+                db_add_message,
+                message_id=str(uuid.uuid4()),
+                session_id=thread_id,
+                role="assistant",
+                content=f"Branching into side chat: {thread_name}.\n\n{proposal_data.get('reason')}",
             )
 
         return {"status": "accepted", "thread": created_thread, "proposal": proposal_data}

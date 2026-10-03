@@ -15,7 +15,7 @@ import {
   CheckCircle2,
   RotateCcw,
 } from 'lucide-react';
-import type { ActiveFlyout, ThreadItem, NavigationLink, ChronologyEvent } from '../types';
+import type { ActiveFlyout, ThreadItem, NavigationLink, ChronologyEvent, Session } from '../types';
 import * as api from '../api';
 import type { HealthDetails } from '../api';
 
@@ -44,12 +44,13 @@ export const NavigationRail: FC<NavigationRailProps> = ({
 }) => {
   // Flyout data states
   const [threads, setThreads] = useState<ThreadItem[]>([]);
+  const [pastSessions, setPastSessions] = useState<Session[]>([]);
   const [links, setLinks] = useState<NavigationLink[]>([]);
   const [chronology, setChronology] = useState<ChronologyEvent[]>([]);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [threadFilter, setThreadFilter] = useState<'all' | 'active' | 'concluded'>('all');
+  const [threadFilter, setThreadFilter] = useState<'all' | 'active' | 'concluded' | 'past'>('all');
 
   // New Thread creation inline state
   const [isCreatingThread, setIsCreatingThread] = useState(false);
@@ -70,6 +71,17 @@ export const NavigationRail: FC<NavigationRailProps> = ({
       setThreads(res.threads || []);
     } catch (e) {
       console.error('Failed to load threads:', e);
+    }
+  };
+
+  // Load past sessions (legacy non-thread sessions)
+  const refreshPastSessions = async () => {
+    try {
+      const all = await api.listSessions();
+      const legacy = all.filter((s) => s.id !== 'main' && !s.is_thread);
+      setPastSessions(legacy);
+    } catch (e) {
+      console.error('Failed to load past sessions:', e);
     }
   };
 
@@ -95,11 +107,13 @@ export const NavigationRail: FC<NavigationRailProps> = ({
 
   useEffect(() => {
     refreshThreads();
+    refreshPastSessions();
   }, [currentSessionId]);
 
   useEffect(() => {
     if (activeFlyout === 'threads') {
       refreshThreads();
+      refreshPastSessions();
     } else if (activeFlyout === 'links') {
       refreshLinks();
     } else if (activeFlyout === 'chronology') {
@@ -461,26 +475,68 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               )}
 
               {/* Filter Tabs */}
-              <div className="px-4 py-2 border-b border-zinc-800/60 flex items-center gap-1 text-xs">
-                {(['all', 'active', 'concluded'] as const).map((tab) => (
+              <div className="px-4 py-2 border-b border-zinc-800/60 flex items-center gap-1 text-xs overflow-x-auto">
+                {(['all', 'active', 'concluded', 'past'] as const).map((tab) => (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => setThreadFilter(tab)}
-                    className={`px-2.5 py-1 rounded-md capitalize transition-colors ${
+                    className={`px-2.5 py-1 rounded-md capitalize whitespace-nowrap transition-colors ${
                       threadFilter === tab
                         ? 'bg-zinc-800 text-zinc-100 font-medium'
                         : 'text-zinc-500 hover:text-zinc-300'
                     }`}
                   >
-                    {tab}
+                    {tab === 'past' ? 'Past Sessions' : tab}
                   </button>
                 ))}
               </div>
 
-              {/* Threads List */}
+              {/* Threads / Past Sessions List */}
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
-                {filteredThreads.length === 0 ? (
+                {threadFilter === 'past' ? (
+                  pastSessions.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-48 text-center px-4">
+                      <Clock className="w-8 h-8 text-zinc-700 mb-2" />
+                      <p className="text-xs text-zinc-400">No past sessions found</p>
+                      <p className="text-[11px] text-zinc-600 mt-1">
+                        Previous chat sessions outside the continuous timeline appear here.
+                      </p>
+                    </div>
+                  ) : (
+                    pastSessions.map((s) => {
+                      const isSelected = currentSessionId === s.id;
+                      return (
+                        <div
+                          key={s.id}
+                          onClick={() => {
+                            onSelectSession(s.id);
+                            onSelectFlyout('none');
+                          }}
+                          className={`group relative p-3 rounded-xl border transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-zinc-900 border-zinc-700 text-zinc-100'
+                              : 'bg-zinc-950/60 border-zinc-800/60 hover:bg-zinc-900/60 hover:border-zinc-700/80 text-zinc-300'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <h4 className="text-[13.5px] font-medium truncate flex-1 text-zinc-100">
+                              {s.name}
+                            </h4>
+                            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded border bg-zinc-800 text-zinc-400 border-zinc-700">
+                              past
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1 border-t border-zinc-800/40">
+                            <span>{s.model || 'gpt-5.4-mini'}</span>
+                            <span>{formatTimestamp(s.updated_at || s.created_at)}</span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )
+                ) : filteredThreads.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-48 text-center px-4">
                     <GitBranch className="w-8 h-8 text-zinc-700 mb-2" />
                     <p className="text-xs text-zinc-400">No side chats found</p>

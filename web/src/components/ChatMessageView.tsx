@@ -245,21 +245,29 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
 
           {(!proposal.status || proposal.status === 'pending') && (
             <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => onRespondProposal?.(message.id, 'accept')}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 font-medium text-xs hover:bg-white transition-colors"
-              >
-                <GitBranch className="w-3.5 h-3.5" />
-                Open Side Chat
-              </button>
-              <button
-                type="button"
-                onClick={() => onRespondProposal?.(message.id, 'decline')}
-                className="px-3 py-1.5 rounded-lg border border-zinc-800 text-zinc-300 font-medium text-xs hover:bg-zinc-900 hover:text-white transition-colors"
-              >
-                Continue Here
-              </button>
+              {message.isStreaming ? (
+                <span className="text-xs text-zinc-500 italic">
+                  Finalizing proposal...
+                </span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => onRespondProposal?.(message.id, 'accept')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 font-medium text-xs hover:bg-white transition-colors"
+                  >
+                    <GitBranch className="w-3.5 h-3.5" />
+                    Open Side Chat
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onRespondProposal?.(message.id, 'decline')}
+                    className="px-3 py-1.5 rounded-lg border border-zinc-800 text-zinc-300 font-medium text-xs hover:bg-zinc-900 hover:text-white transition-colors"
+                  >
+                    Continue Here
+                  </button>
+                </>
+              )}
             </div>
           )}
 

@@ -10,6 +10,7 @@ import {
   RotateCcw,
   Sparkles,
   Plus,
+  Clock,
 } from 'lucide-react';
 import type {
   ChatMessage,
@@ -19,6 +20,7 @@ import type {
   SupportedModel,
   ActiveFlyout,
   ThreadItem,
+  Session,
 } from './types';
 import * as api from './api';
 import { NavigationRail } from './components/NavigationRail';
@@ -32,6 +34,7 @@ export function App() {
   // Session & Thread state: default to 'main' lifelong continuous timeline
   const [currentSessionId, setCurrentSessionId] = useState<string>('main');
   const [activeThread, setActiveThread] = useState<ThreadItem | null>(null);
+  const [activeSession, setActiveSession] = useState<Session | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isBackendOnline, setIsBackendOnline] = useState(true);
@@ -131,16 +134,20 @@ export function App() {
     try {
       const { session, messages: history } = await api.getSessionMessages(target);
       if (session) {
+        setActiveSession(session);
         setSelectedModel(session.model || 'gpt-5.4-mini');
         setThinkingEffort(session.thinking_effort || 'medium');
         setRecallBudget(session.recall_budget || 'medium');
         setVerbosity(session.verbosity || 'low');
+      } else {
+        setActiveSession(null);
       }
       setMessages(history);
       setTimeout(() => scrollToBottom(true), 50);
     } catch (err) {
       console.error('Failed to load session messages:', err);
       setMessages([]);
+      setActiveSession(null);
     }
   }, [isStreaming, scrollToBottom]);
 
@@ -172,23 +179,6 @@ export function App() {
       mounted = false;
       clearInterval(interval);
     };
-  }, [handleSelectSession]);
-
-  // Handle user responding to a side chat proposal card
-  const handleRespondProposal = useCallback(async (messageId: string, action: 'accept' | 'decline') => {
-    try {
-      const res = await api.respondToThreadProposal(messageId, action);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId ? { ...m, thread_proposal: res.proposal } : m
-        )
-      );
-      if (action === 'accept' && res.thread) {
-        handleSelectSession(res.thread.id);
-      }
-    } catch (err) {
-      console.error('Failed to respond to proposal:', err);
-    }
   }, [handleSelectSession]);
 
   // Conclude active side chat
@@ -484,6 +474,26 @@ export function App() {
     );
   };
 
+  // Handle user responding to a side chat proposal card
+  const handleRespondProposal = useCallback(async (messageId: string, action: 'accept' | 'decline') => {
+    try {
+      const res = await api.respondToThreadProposal(messageId, action);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, thread_proposal: res.proposal } : m
+        )
+      );
+      if (action === 'accept' && res.thread) {
+        handleSelectSession(res.thread.id);
+      } else if (action === 'decline') {
+        // Automatically continue generating directly in this timeline
+        handleSendMessage('Please continue and provide the complete solution directly here in this timeline.');
+      }
+    } catch (err) {
+      console.error('Failed to respond to proposal:', err);
+    }
+  }, [handleSelectSession]);
+
   // Edit user prompt & resend
   const handleEditAndResend = async (messageId: string, newContent: string) => {
     if (!currentSessionId || isStreaming) return;
@@ -587,6 +597,8 @@ export function App() {
           placeholder={
             activeThread
               ? `Focus on ${activeThread.name}...`
+              : currentSessionId !== 'main' && activeSession
+              ? `Message in ${activeSession.name}...`
               : isTemporary
               ? 'Message in Temporary Scratch turn...'
               : 'Message Velocity...'
@@ -706,6 +718,30 @@ export function App() {
                 )}
               </div>
             </div>
+          ) : currentSessionId && currentSessionId !== 'main' ? (
+            /* Legacy / Past Session Dedicated Top Bar */
+            <div className="flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleSelectSession('main')}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Main Timeline</span>
+                </button>
+                <div className="w-[1px] h-4 bg-zinc-800" />
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-zinc-400" />
+                  <h2 className="text-sm font-semibold text-zinc-100 truncate max-w-[280px] sm:max-w-md">
+                    {activeSession?.name || 'Past Session'}
+                  </h2>
+                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border bg-zinc-800 text-zinc-400 border-zinc-700">
+                    past session
+                  </span>
+                </div>
+              </div>
+            </div>
           ) : (
             /* Main Continuous Timeline Top Bar */
             <div className="flex items-center justify-between w-full">
@@ -747,7 +783,7 @@ export function App() {
                 title="Click to shuffle greeting"
                 className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-8 text-center font-sans cursor-pointer hover:opacity-80 active:scale-[0.99] transition-all"
               >
-                {activeThread ? activeThread.name : greeting}
+                {activeThread ? activeThread.name : (currentSessionId !== 'main' && activeSession ? activeSession.name : greeting)}
               </h1>
               {renderInputCapsule(true)}
             </div>

@@ -257,7 +257,8 @@ def compose_responses_input(
             "- Zero conversational filler: Never say 'Certainly!', 'I would be glad to help', 'Great question', or performative pleasantries.\n"
             "- Zero unprompted lists: Avoid robotic bulleted lists unless explicitly asked, comparing distinct options, or providing ordered steps.\n"
             "- Tone: Speak like a trusted longtime engineering collaborator. Warm, perceptive, intellectually sharp, and natural.\n"
-            "- Side Chat (Thread) Proposals: When Sathwik asks for a complex multi-step technical implementation, long-form debugging session, or multi-turn exploration that would clutter the main timeline, use the `propose_side_chat` tool to propose branching into a side chat. Never create a side chat without proposing and getting approval unless Sathwik explicitly commanded it."
+            "- Side Chat (Thread) Proposals: When Sathwik asks for a complex multi-step technical implementation, long-form debugging session, or multi-turn exploration that would clutter the main timeline, use the `propose_side_chat` tool to propose branching into a side chat. Never create a side chat without proposing and getting approval unless Sathwik explicitly commanded it.\n"
+            "- Overriding Side Chat Proposals: If Sathwik explicitly asks to continue in the main timeline, declines a side chat proposal, or tells you to solve it here, do NOT propose a side chat again. Provide the complete, exhaustive technical solution and code directly in the main timeline."
         )
     else:
         instructions += (

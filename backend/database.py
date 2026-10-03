@@ -607,11 +607,16 @@ def get_chronology_events(limit: int = 50) -> List[Dict[str, Any]]:
 def get_messages(session_id: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
-    query = "SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC"
-    params = [session_id]
     if limit is not None:
-        query += " LIMIT ?"
-        params.append(limit)
+        query = """
+        SELECT * FROM (
+            SELECT * FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT ?
+        ) ORDER BY created_at ASC
+        """
+        params = [session_id, limit]
+    else:
+        query = "SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC"
+        params = [session_id]
 
     cursor.execute(query, tuple(params))
     rows = cursor.fetchall()
