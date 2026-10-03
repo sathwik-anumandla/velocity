@@ -10,6 +10,7 @@ import type {
   ThreadProposal,
   NavigationLink,
   ChronologyEvent,
+  Artifact,
 } from './types';
 
 const API_BASE = ''; // relative URL, handled by Vite proxy in dev and FastAPI mount in prod
@@ -143,6 +144,7 @@ export interface StreamChatHandlers {
   onToolStart?: (tool: string, query?: string) => void;
   onToolDone?: (tool: string, result?: string) => void;
   onThreadProposal?: (proposal: ThreadProposal) => void;
+  onArtifactCreated?: (artifact: Artifact) => void;
   onDelta: (text: string) => void;
   onComplete: (data: {
     text: string;
@@ -151,6 +153,8 @@ export interface StreamChatHandlers {
     user_message_id?: string;
     assistant_message_id?: string;
     thread_proposal?: ThreadProposal;
+    artifact?: Artifact;
+    artifact_id?: string;
   }) => void;
   onError: (error: string) => void;
 }
@@ -239,12 +243,18 @@ export async function streamChatTurn(
                 handlers.onStatus?.('Updating memory');
               } else if (toolName === 'create_memory_doc') {
                 handlers.onStatus?.('Creating memory doc');
+              } else if (toolName === 'create_artifact') {
+                handlers.onStatus?.('Creating artifact');
+              } else if (toolName === 'update_artifact') {
+                handlers.onStatus?.('Updating artifact');
               } else if (toolName === 'read_mental_model') {
                 handlers.onStatus?.('Fetching mental model');
               } else if (toolName === 'propose_side_chat') {
                 handlers.onStatus?.('Proposing side chat');
               }
               handlers.onToolStart?.(toolName, data.query || '');
+            } else if (currentEvent === 'artifact_created') {
+              handlers.onArtifactCreated?.(data);
             } else if (currentEvent === 'tool_done' || currentEvent === 'tool_result') {
               handlers.onToolDone?.(data.tool || 'tool', data.result || '');
             } else if (currentEvent === 'delta') {
@@ -257,6 +267,8 @@ export async function streamChatTurn(
                 user_message_id: data.user_message_id,
                 assistant_message_id: data.assistant_message_id,
                 thread_proposal: data.thread_proposal,
+                artifact: data.artifact,
+                artifact_id: data.artifact_id,
               });
             } else if (currentEvent === 'error') {
               handlers.onError(data.error || 'Unknown error');
@@ -436,6 +448,27 @@ export async function getNavigationChronology(limit: number = 50): Promise<{ eve
   const res = await fetch(`${API_BASE}/api/navigation/chronology?limit=${limit}`);
   if (!res.ok) throw new Error(`Failed to get chronology: ${res.status}`);
   return res.json();
+}
+
+// ==========================================
+// Phase 3: Artifact Canvas & PDF Export
+// ==========================================
+
+export async function listArtifacts(sessionId?: string): Promise<{ artifacts: Artifact[] }> {
+  const url = sessionId ? `${API_BASE}/api/artifacts?session_id=${encodeURIComponent(sessionId)}` : `${API_BASE}/api/artifacts`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to list artifacts: ${res.status}`);
+  return res.json();
+}
+
+export async function getArtifact(artifactId: string): Promise<Artifact> {
+  const res = await fetch(`${API_BASE}/api/artifacts/${artifactId}`);
+  if (!res.ok) throw new Error(`Failed to get artifact ${artifactId}: ${res.status}`);
+  return res.json();
+}
+
+export function getArtifactPdfUrl(artifactId: string): string {
+  return `${API_BASE}/api/artifacts/${artifactId}/export/pdf`;
 }
 
 

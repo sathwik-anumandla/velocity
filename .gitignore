@@ -36,11 +36,13 @@ htmlcov/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/*.bak*
 *.sqlite
 *.sqlite3
 *.db
 *.db-shm
 *.db-wal
+*.bak*
 
 # Memory Vault (Private personal memory docs kept off git)
 data/memory/

@@ -269,6 +269,14 @@ def compose_responses_input(
             "- Maintain a warm, highly focused engineering presence."
         )
 
+    # Artifact Canvas Directive
+    instructions += (
+        "\n\n[Artifact Canvas Directive]:\n"
+        "- When Sathwik requests a comprehensive specification, RFC, architecture document, research report, in-depth guide, or multi-section analysis, use the `create_artifact` tool to produce a structured document artifact.\n"
+        "- Do NOT dump 50+ lines of documentation directly into the chat message when creating a document or report. Create the artifact via `create_artifact`, and accompany it with a concise 1-3 sentence summary in the chat response.\n"
+        "- The artifact will render in the side-by-side Artifact Canvas and mirror to the deterministic memory vault."
+    )
+
     if verbosity == "low":
         instructions += (
             "\n\n[Verbosity Directive]: Respond with Low / Concise verbosity. "

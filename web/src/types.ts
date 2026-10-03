@@ -54,6 +54,21 @@ export interface AgenticStep {
   message: string;
 }
 
+export interface Artifact {
+  id: string;
+  session_id: string;
+  message_id?: string;
+  title: string;
+  artifact_type: string;
+  language?: string;
+  content: string;
+  summary?: string;
+  version: number;
+  file_path?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ChatMessage {
   id: string;
   session_id: string;
@@ -64,6 +79,9 @@ export interface ChatMessage {
   // Side chat thread associations
   thread_id?: string;
   thread_proposal?: string | ThreadProposal;
+  // Artifact associations
+  artifact_id?: string;
+  artifact?: Artifact;
   // Dynamic streaming & tool state
   reasoning?: string;
   statusText?: string;

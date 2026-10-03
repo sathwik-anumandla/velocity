@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel
 
-from fastapi import FastAPI, HTTPException, Query, Path, Request
+from fastapi import FastAPI, HTTPException, Query, Path, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 from dotenv import load_dotenv
@@ -39,6 +39,11 @@ from backend.database import (
     update_message_proposal as db_update_message_proposal,
     get_extracted_links as db_get_extracted_links,
     get_chronology_events as db_get_chronology_events,
+    create_artifact as db_create_artifact,
+    get_artifact as db_get_artifact,
+    list_artifacts as db_list_artifacts,
+    update_artifact as db_update_artifact,
+    delete_artifact as db_delete_artifact,
 )
 from backend.schemas import (
     ChatRequest,
@@ -51,7 +56,11 @@ from backend.schemas import (
     ThreadUpdate,
     ThreadResponse,
     ProposalResponseAction,
+    ArtifactCreate,
+    ArtifactUpdate,
+    ArtifactResponse,
 )
+from backend.pdf_service import generate_artifact_pdf
 from backend.hindsight import HindsightClient
 from backend.prompt import (
     compose_responses_input,
@@ -465,9 +474,16 @@ async def get_session_details(session_id: str = Path(...)):
         raise HTTPException(status_code=404, detail="Session not found")
 
     messages = db_get_messages(session_id)
+    enriched_messages = []
+    for m in messages:
+        m_dict = dict(m)
+        if m_dict.get("artifact_id"):
+            m_dict["artifact"] = db_get_artifact(m_dict["artifact_id"])
+        enriched_messages.append(MessageResponse(**m_dict))
+
     return {
         "session": SessionResponse(**session),
-        "messages": [MessageResponse(**m) for m in messages],
+        "messages": enriched_messages,
     }
 
 
@@ -704,6 +720,10 @@ async def chat_stream(request: ChatRequest):
             "data": json.dumps({"text": "Thinking"})
         }
 
+        thread_proposal_data = None
+        artifact_data = None
+        artifact_id = None
+
         # Stream from Responses API runner
         async for sse_item in responses_runner.stream_turn(
             instructions=instructions,
@@ -724,6 +744,8 @@ async def chat_stream(request: ChatRequest):
                     full_assistant_response = payload.get("text", "")
                     usage_data = payload.get("usage", {})
                     thread_proposal_data = payload.get("thread_proposal", None)
+                    artifact_data = payload.get("artifact", None)
+                    artifact_id = payload.get("artifact_id", None)
                 except Exception:
                     pass
             else:
@@ -771,6 +793,8 @@ async def chat_stream(request: ChatRequest):
                 "role": "assistant",
                 "content": full_assistant_response,
                 "memory_status": overall_memory_status,
+                "artifact_id": artifact_id,
+                "artifact": artifact_data,
                 "created_at": now_iso,
             })
             temp_sessions[session_id]["last_tokens"] = new_total_tokens
@@ -790,13 +814,24 @@ async def chat_stream(request: ChatRequest):
                 content=full_assistant_response,
                 memory_status=overall_memory_status,
                 thread_proposal=json.dumps(thread_proposal_data) if thread_proposal_data else None,
+                artifact_id=artifact_id,
             )
+            if artifact_id:
+                try:
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("UPDATE artifacts SET message_id = ? WHERE id = ?", (asst_msg_id, artifact_id))
+                    conn.commit()
+                    conn.close()
+                except Exception as ex:
+                    logger.warning(f"Could not link artifact {artifact_id} with message {asst_msg_id}: {ex}")
+
             db_update_session(
                 session_id=session_id,
                 last_tokens=new_total_tokens,
             )
 
-        # Emit final completion event with message IDs, memory status, thread proposal and usage
+        # Emit final completion event with message IDs, memory status, thread proposal, artifact and usage
         yield {
             "event": "complete",
             "data": json.dumps({
@@ -806,6 +841,8 @@ async def chat_stream(request: ChatRequest):
                 "user_message_id": user_msg_id,
                 "assistant_message_id": asst_msg_id,
                 "thread_proposal": thread_proposal_data,
+                "artifact": artifact_data,
+                "artifact_id": artifact_id,
             }),
         }
 
@@ -1230,6 +1267,112 @@ async def get_navigation_chronology_endpoint(limit: int = 50):
     """
     events = await asyncio.to_thread(db_get_chronology_events, limit)
     return {"events": events}
+
+
+# ==============================================================================
+# Phase 3: Artifact Canvas & PDF Export Engine Endpoints
+# ==============================================================================
+
+@app.get("/api/artifacts")
+async def list_artifacts_endpoint(session_id: Optional[str] = None, limit: int = 50):
+    """
+    List all artifacts, optionally filtered by session_id.
+    """
+    artifacts = await asyncio.to_thread(db_list_artifacts, session_id=session_id, limit=limit)
+    return {"artifacts": [ArtifactResponse(**a) for a in artifacts]}
+
+
+@app.get("/api/artifacts/{artifact_id}", response_model=ArtifactResponse)
+async def get_artifact_endpoint(artifact_id: str):
+    """
+    Get full artifact metadata and markdown content.
+    """
+    artifact = await asyncio.to_thread(db_get_artifact, artifact_id)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return ArtifactResponse(**artifact)
+
+
+@app.post("/api/artifacts", response_model=ArtifactResponse)
+async def create_artifact_endpoint(req: ArtifactCreate):
+    """
+    Manually create a new artifact document.
+    """
+    art_id = f"art_{uuid.uuid4().hex[:12]}"
+    artifact = await asyncio.to_thread(
+        db_create_artifact,
+        artifact_id=art_id,
+        session_id=req.session_id or "main",
+        title=req.title,
+        artifact_type=req.artifact_type,
+        content=req.content,
+        message_id=req.message_id,
+        language=req.language,
+        summary=req.summary,
+    )
+    return ArtifactResponse(**artifact)
+
+
+@app.patch("/api/artifacts/{artifact_id}", response_model=ArtifactResponse)
+async def update_artifact_endpoint(artifact_id: str, req: ArtifactUpdate):
+    """
+    Update an artifact document (title, content, or summary).
+    """
+    updated = await asyncio.to_thread(
+        db_update_artifact,
+        artifact_id=artifact_id,
+        title=req.title,
+        content=req.content,
+        summary=req.summary,
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return ArtifactResponse(**updated)
+
+
+@app.delete("/api/artifacts/{artifact_id}")
+async def delete_artifact_endpoint(artifact_id: str):
+    """
+    Delete an artifact.
+    """
+    success = await asyncio.to_thread(db_delete_artifact, artifact_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return {"status": "deleted", "artifact_id": artifact_id}
+
+
+@app.get("/api/artifacts/{artifact_id}/export/pdf")
+async def export_artifact_pdf_endpoint(artifact_id: str):
+    """
+    Export artifact as a publication-grade A4 PDF document.
+    """
+    import re
+    artifact = await asyncio.to_thread(db_get_artifact, artifact_id)
+    if not artifact:
+        raise HTTPException(status_code=404, detail="Artifact not found")
+
+    pdf_bytes = await asyncio.to_thread(
+        generate_artifact_pdf,
+        title=artifact["title"],
+        content=artifact["content"],
+        artifact_type=artifact["artifact_type"],
+        version=artifact.get("version", 1),
+        created_at=artifact.get("created_at"),
+    )
+
+    slug = re.sub(r'[^a-zA-Z0-9_-]+', '-', artifact["title"].lower()).strip('-')
+    if not slug:
+        slug = f"artifact-{artifact_id}"
+    filename = f"{slug}.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        },
+    )
 
 
 # ==============================================================================

@@ -21,11 +21,13 @@ import type {
   ActiveFlyout,
   ThreadItem,
   Session,
+  Artifact,
 } from './types';
 import * as api from './api';
 import { NavigationRail } from './components/NavigationRail';
 import { OptionsMenu } from './components/OptionsMenu';
 import { ChatMessageView } from './components/ChatMessageView';
+import { ArtifactCanvas } from './components/ArtifactCanvas';
 import { SearchModal } from './components/SearchModal';
 import { MemoryInspectorModal } from './components/MemoryInspectorModal';
 import { getGreetingForCurrentTime } from './utils/greetings';
@@ -40,6 +42,11 @@ export function App() {
   const [isBackendOnline, setIsBackendOnline] = useState(true);
   const [healthDetails, setHealthDetails] = useState<api.HealthDetails | null>(null);
   const [isTemporary, setIsTemporary] = useState(false);
+
+  // Artifact Canvas State
+  const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
+  const [isCanvasOpen, setIsCanvasOpen] = useState(false);
+  const [canvasWidth, setCanvasWidth] = useState(620);
 
   // Navigation Rail & Flyouts
   const [activeFlyout, setActiveFlyout] = useState<ActiveFlyout>('none');
@@ -225,7 +232,7 @@ export function App() {
     setIsTemporary((prev) => !prev);
   }, [isStreaming]);
 
-  // Global keyboard shortcuts: ⌘K (Search), ⌘M (Memory Inspector), Esc (Dismiss)
+  // Global keyboard shortcuts: Cmd+K (Search), Cmd+M (Memory Inspector), Esc (Dismiss)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMeta = e.metaKey || e.ctrlKey;
@@ -384,6 +391,14 @@ export function App() {
               )
             );
           },
+          onArtifactCreated: (art) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === asstMsgId ? { ...m, artifact: art, artifact_id: art.id } : m
+              )
+            );
+            setActiveArtifact((curr) => (curr && curr.id === art.id ? art : curr));
+          },
           onToolStart: (tool, query) => {
             setMessages((prev) =>
               prev.map((m) => {
@@ -431,6 +446,8 @@ export function App() {
                     isStreaming: false,
                     statusText: undefined,
                     thread_proposal: data.thread_proposal || m.thread_proposal,
+                    artifact: data.artifact || m.artifact,
+                    artifact_id: data.artifact_id || m.artifact_id,
                   };
                 }
                 if (m.id === userMsgId && data.user_message_id) {
@@ -442,6 +459,9 @@ export function App() {
                 return m;
               })
             );
+            if (data.artifact) {
+              setActiveArtifact((curr) => (curr && curr.id === data.artifact?.id ? data.artifact : curr));
+            }
             setIsStreaming(false);
           },
           onError: (err) => {
@@ -811,6 +831,10 @@ export function App() {
                     onRegenerate={handleRegenerate}
                     onOpenThread={(threadId) => handleSelectSession(threadId)}
                     onRespondProposal={handleRespondProposal}
+                    onOpenArtifact={(art) => {
+                      setActiveArtifact(art);
+                      setIsCanvasOpen(true);
+                    }}
                   />
                 ))}
               </div>
@@ -841,6 +865,15 @@ export function App() {
           </div>
         )}
       </main>
+
+      {/* 3. Artifact Canvas Side-by-Side Panel (Split View) */}
+      <ArtifactCanvas
+        artifact={activeArtifact}
+        isOpen={isCanvasOpen}
+        onClose={() => setIsCanvasOpen(false)}
+        width={canvasWidth}
+        onWidthChange={setCanvasWidth}
+      />
 
       {/* Global In-UI Search Modal (Cmd+K) */}
       <SearchModal

@@ -2,8 +2,8 @@ import { useState } from 'react';
 import type { FC } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Pencil, Copy, Check, RotateCcw, GitBranch, ArrowRight } from 'lucide-react';
-import type { ChatMessage, ThreadProposal } from '../types';
+import { Pencil, Copy, Check, RotateCcw, GitBranch, ArrowRight, FileText, Download, PanelRight } from 'lucide-react';
+import type { ChatMessage, ThreadProposal, Artifact } from '../types';
 import { CodeBlock } from './CognitiveWidgets';
 
 interface ChatMessageViewProps {
@@ -12,6 +12,7 @@ interface ChatMessageViewProps {
   onRegenerate?: (messageId: string) => void;
   onOpenThread?: (threadId: string) => void;
   onRespondProposal?: (messageId: string, action: 'accept' | 'decline') => void;
+  onOpenArtifact?: (artifact: Artifact) => void;
 }
 
 export const ChatMessageView: FC<ChatMessageViewProps> = ({
@@ -20,6 +21,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
   onRegenerate,
   onOpenThread,
   onRespondProposal,
+  onOpenArtifact,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -206,6 +208,52 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
           </div>
         ) : null}
       </div>
+
+      {/* Inline Document Artifact Card */}
+      {message.artifact && (
+        <div className="mt-3.5 p-4 rounded-2xl border border-zinc-800 bg-zinc-950/80 shadow-md max-w-xl w-full">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-1.5 text-zinc-400">
+              <FileText className="w-4 h-4 text-sky-400" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider">
+                {message.artifact.artifact_type.replace(/_/g, ' ')}
+              </span>
+            </div>
+            <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border bg-zinc-900 border-zinc-800 text-zinc-400">
+              v{message.artifact.version}
+            </span>
+          </div>
+
+          <h4 className="text-[15px] font-semibold text-zinc-100 mb-1">
+            {message.artifact.title}
+          </h4>
+
+          {message.artifact.summary && (
+            <p className="text-[13.5px] text-zinc-400 mb-3 leading-relaxed">
+              {message.artifact.summary}
+            </p>
+          )}
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => onOpenArtifact?.(message.artifact!)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 font-medium text-xs hover:bg-white transition-colors"
+            >
+              <PanelRight className="w-3.5 h-3.5" />
+              Open in Canvas
+            </button>
+            <a
+              href={`/api/artifacts/${message.artifact.id}/export/pdf`}
+              download={`${message.artifact.title.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')}.pdf`}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-zinc-800 text-zinc-300 font-medium text-xs hover:bg-zinc-900 hover:text-white transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Export PDF
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Side Chat Proposal Card */}
       {proposal && (

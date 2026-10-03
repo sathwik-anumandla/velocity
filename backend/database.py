@@ -5,8 +5,10 @@ Temporary sessions are ephemeral and intentionally NOT persisted here.
 """
 
 import os
+import re
 import json
 import sqlite3
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
@@ -101,6 +103,8 @@ def init_db() -> None:
         cursor.execute("ALTER TABLE messages ADD COLUMN thread_id TEXT DEFAULT NULL;")
     if "thread_proposal" not in existing_msg_cols:
         cursor.execute("ALTER TABLE messages ADD COLUMN thread_proposal TEXT DEFAULT NULL;")
+    if "artifact_id" not in existing_msg_cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN artifact_id TEXT DEFAULT NULL;")
 
     # Ensure canonical main timeline session exists
     cursor.execute("SELECT id FROM sessions WHERE id = 'main';")
@@ -142,6 +146,28 @@ def init_db() -> None:
         VALUES (new.id, new.session_id, new.role, new.content);
     END;
     """)
+
+    # 5. Artifacts table for Document & PDF Canvas
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS artifacts (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        message_id TEXT DEFAULT NULL,
+        title TEXT NOT NULL,
+        artifact_type TEXT NOT NULL,
+        language TEXT DEFAULT 'markdown',
+        content TEXT NOT NULL,
+        summary TEXT DEFAULT NULL,
+        version INTEGER NOT NULL DEFAULT 1,
+        file_path TEXT DEFAULT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+    """)
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_updated ON artifacts(updated_at DESC);")
 
     conn.commit()
     conn.close()
@@ -305,6 +331,7 @@ def add_message(
     memory_status: str = "ok",
     thread_id: Optional[str] = None,
     thread_proposal: Optional[str] = None,
+    artifact_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     conn = get_connection()
     now = datetime.now(timezone.utc).isoformat()
@@ -318,10 +345,10 @@ def add_message(
 
     cursor.execute(
         """
-        INSERT INTO messages (id, session_id, role, content, memory_status, thread_id, thread_proposal, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO messages (id, session_id, role, content, memory_status, thread_id, thread_proposal, artifact_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (message_id, session_id, role, content, memory_status, thread_id, thread_proposal, now),
+        (message_id, session_id, role, content, memory_status, thread_id, thread_proposal, artifact_id, now),
     )
     conn.commit()
     conn.close()
@@ -334,6 +361,7 @@ def add_message(
         "memory_status": memory_status,
         "thread_id": thread_id,
         "thread_proposal": thread_proposal,
+        "artifact_id": artifact_id,
         "created_at": now,
     }
 
@@ -661,3 +689,159 @@ def search_messages(query: str, limit: int = 50) -> List[Dict[str, Any]]:
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+
+def save_artifact_to_vault(artifact_id: str, title: str, artifact_type: str, content: str, version: int = 1) -> str:
+    """
+    Mirrors an artifact to data/memory/documents/<slug>.md with frontmatter.
+    """
+    vault_docs_dir = Path("data/memory/documents")
+    vault_docs_dir.mkdir(parents=True, exist_ok=True)
+
+    slug = re.sub(r'[^a-zA-Z0-9_-]+', '-', title.lower()).strip('-')
+    if not slug:
+        slug = artifact_id
+    filename = f"{slug}.md"
+    file_path = vault_docs_dir / filename
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc_content = (
+        f"---\n"
+        f"id: {artifact_id}\n"
+        f"title: \"{title}\"\n"
+        f"type: {artifact_type}\n"
+        f"version: {version}\n"
+        f"updated_at: {now_iso}\n"
+        f"---\n\n"
+        f"{content}\n"
+    )
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(doc_content)
+
+    return str(file_path)
+
+
+def create_artifact(
+    artifact_id: str,
+    session_id: str,
+    title: str,
+    artifact_type: str,
+    content: str,
+    message_id: Optional[str] = None,
+    language: str = "markdown",
+    summary: Optional[str] = None,
+) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc).isoformat()
+    file_path = None
+    try:
+        file_path = save_artifact_to_vault(artifact_id, title, artifact_type, content, version=1)
+    except Exception as e:
+        print(f"Warning: Failed to mirror artifact to vault: {e}")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO artifacts (
+        id, session_id, message_id, title, artifact_type, language,
+        content, summary, version, file_path, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+    """, (
+        artifact_id, session_id, message_id, title, artifact_type, language,
+        content, summary, file_path, now, now
+    ))
+    conn.commit()
+    conn.close()
+
+    return {
+        "id": artifact_id,
+        "session_id": session_id,
+        "message_id": message_id,
+        "title": title,
+        "artifact_type": artifact_type,
+        "language": language,
+        "content": content,
+        "summary": summary,
+        "version": 1,
+        "file_path": file_path,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def get_artifact(artifact_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM artifacts WHERE id = ?", (artifact_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_artifacts(session_id: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    if session_id:
+        cursor.execute(
+            "SELECT * FROM artifacts WHERE session_id = ? ORDER BY updated_at DESC LIMIT ?",
+            (session_id, limit),
+        )
+    else:
+        cursor.execute(
+            "SELECT * FROM artifacts ORDER BY updated_at DESC LIMIT ?",
+            (limit,),
+        )
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_artifact(
+    artifact_id: str,
+    title: Optional[str] = None,
+    content: Optional[str] = None,
+    summary: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    current = get_artifact(artifact_id)
+    if not current:
+        return None
+
+    new_title = title if title is not None else current["title"]
+    new_content = content if content is not None else current["content"]
+    new_summary = summary if summary is not None else current["summary"]
+    new_version = current["version"] + 1
+    now = datetime.now(timezone.utc).isoformat()
+
+    file_path = current.get("file_path")
+    try:
+        file_path = save_artifact_to_vault(
+            artifact_id, new_title, current["artifact_type"], new_content, version=new_version
+        )
+    except Exception as e:
+        print(f"Warning: Failed to update vault mirror: {e}")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    UPDATE artifacts SET
+        title = ?,
+        content = ?,
+        summary = ?,
+        version = ?,
+        file_path = ?,
+        updated_at = ?
+    WHERE id = ?
+    """, (new_title, new_content, new_summary, new_version, file_path, now, artifact_id))
+    conn.commit()
+    conn.close()
+
+    return get_artifact(artifact_id)
+
+
+def delete_artifact(artifact_id: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM artifacts WHERE id = ?", (artifact_id,))
+    affected = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return affected

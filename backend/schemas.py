@@ -56,6 +56,39 @@ class MessageResponse(BaseModel):
     created_at: str
     thread_id: Optional[str] = None
     thread_proposal: Optional[str] = None
+    artifact_id: Optional[str] = None
+    artifact: Optional[Dict[str, Any]] = None
+
+
+class ArtifactCreate(BaseModel):
+    title: str
+    artifact_type: str = "document"
+    language: str = "markdown"
+    content: str
+    summary: Optional[str] = None
+    session_id: Optional[str] = "main"
+    message_id: Optional[str] = None
+
+
+class ArtifactUpdate(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    summary: Optional[str] = None
+
+
+class ArtifactResponse(BaseModel):
+    id: str
+    session_id: str
+    message_id: Optional[str] = None
+    title: str
+    artifact_type: str
+    language: Optional[str] = "markdown"
+    content: str
+    summary: Optional[str] = None
+    version: int = 1
+    file_path: Optional[str] = None
+    created_at: str
+    updated_at: str
 
 
 class SearchResult(BaseModel):

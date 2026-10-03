@@ -12,6 +12,7 @@ Invokes the OpenAI Responses API with:
 import os
 import re
 import json
+import uuid
 import logging
 import asyncio
 from typing import List, Dict, Any, Optional, AsyncGenerator
@@ -19,6 +20,10 @@ from dotenv import load_dotenv
 import openai
 from backend.tavily_tool import TavilySearchTool, TAVILY_TOOL_DEFINITION
 from backend.hindsight import HindsightClient
+from backend.database import (
+    create_artifact as db_create_artifact,
+    update_artifact as db_update_artifact,
+)
 from backend.vault import (
     read_memory_doc as vault_read_doc,
     update_memory_section as vault_update_section,
@@ -164,6 +169,74 @@ CONSULT_MEMORY_TOOL_DEFINITION = {
     "parameters": SEARCH_PAST_CONVERSATIONS_TOOL_DEFINITION["parameters"],
 }
 
+CREATE_ARTIFACT_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "create_artifact",
+    "description": (
+        "Create a standalone structured document, architectural specification, RFC, detailed research report, "
+        "or comprehensive guide to be rendered in the dedicated Artifact Canvas panel alongside the chat. "
+        "Use this for content longer than 3-4 paragraphs or reference documents that Sathwik will want to read, "
+        "inspect, or export to PDF."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "Clear, concise title for the document, e.g. 'Raft Consensus Implementation RFC'.",
+            },
+            "artifact_type": {
+                "type": "string",
+                "enum": ["document", "rfc", "architecture", "report", "guide", "spec"],
+                "description": "The category of the artifact.",
+            },
+            "language": {
+                "type": "string",
+                "description": "Programming language if code_file, or 'markdown' for formatted prose (default: markdown).",
+            },
+            "content": {
+                "type": "string",
+                "description": "Full Markdown content of the artifact with structured headings, code blocks, and tables.",
+            },
+            "summary": {
+                "type": "string",
+                "description": "1-2 sentence executive summary of what this document covers.",
+            },
+        },
+        "required": ["title", "content"],
+        "additionalProperties": False,
+    },
+}
+
+UPDATE_ARTIFACT_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "update_artifact",
+    "description": "Update an existing artifact in the canvas with revisions or requested sections.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "artifact_id": {
+                "type": "string",
+                "description": "The ID of the artifact to update.",
+            },
+            "title": {
+                "type": "string",
+                "description": "Optional updated title.",
+            },
+            "content": {
+                "type": "string",
+                "description": "Full revised Markdown content of the artifact.",
+            },
+            "summary": {
+                "type": "string",
+                "description": "Updated 1-2 sentence summary of what changed.",
+            },
+        },
+        "required": ["artifact_id", "content"],
+        "additionalProperties": False,
+    },
+}
+
 
 class ResponsesRunner:
     def __init__(self, hindsight: Optional[HindsightClient] = None):
@@ -244,9 +317,14 @@ class ResponsesRunner:
         if not is_thread:
             tools.append(PROPOSE_SIDE_CHAT_TOOL_DEFINITION)
 
+        # Artifact Canvas tools (available in both main timeline and side chats)
+        tools.append(CREATE_ARTIFACT_TOOL_DEFINITION)
+        tools.append(UPDATE_ARTIFACT_TOOL_DEFINITION)
+
         full_assistant_text = ""
         total_usage: Dict[str, Any] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         last_proposal: Optional[Dict[str, Any]] = None
+        last_artifact: Optional[Dict[str, Any]] = None
         thinking_emitted = False
 
         for hop in range(max_tool_hops):
@@ -605,6 +683,103 @@ class ResponsesRunner:
                         "data": json.dumps({"tool": "propose_side_chat", "result": f"Proposed: {title}"}),
                     }
 
+                elif fn_name == "create_artifact":
+                    title, artifact_type, language, content, summary = "", "document", "markdown", "", ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        title = parsed_args.get("title", "Untitled Document")
+                        artifact_type = parsed_args.get("artifact_type", "document")
+                        language = parsed_args.get("language", "markdown")
+                        content = parsed_args.get("content", "")
+                        summary = parsed_args.get("summary", "")
+                    except Exception:
+                        title = "Untitled Document"
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Creating artifact"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "create_artifact", "query": title}),
+                    }
+
+                    art_id = f"art_{uuid.uuid4().hex[:12]}"
+                    artifact_record = await loop.run_in_executor(
+                        None,
+                        db_create_artifact,
+                        art_id,
+                        session_id,
+                        title,
+                        artifact_type,
+                        content,
+                        None,  # message_id
+                        language,
+                        summary,
+                    )
+                    last_artifact = artifact_record
+
+                    yield {
+                        "event": "artifact_created",
+                        "data": json.dumps(artifact_record),
+                    }
+
+                    tool_output = (
+                        f"[Created artifact '{title}' (ID: {art_id}). "
+                        "The artifact card is now visible to Sathwik with an 'Open in Canvas' action. "
+                        "Provide a concise conversational reply summarizing what was drafted in the document.]"
+                    )
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "create_artifact", "result": f"Created: {title}"}),
+                    }
+
+                elif fn_name == "update_artifact":
+                    art_id, updated_title, updated_content, updated_summary = "", None, "", None
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        art_id = parsed_args.get("artifact_id", "")
+                        updated_title = parsed_args.get("title")
+                        updated_content = parsed_args.get("content", "")
+                        updated_summary = parsed_args.get("summary")
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Updating artifact"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "update_artifact", "query": art_id}),
+                    }
+
+                    updated_record = await loop.run_in_executor(
+                        None,
+                        db_update_artifact,
+                        art_id,
+                        updated_title,
+                        updated_content,
+                        updated_summary,
+                    )
+                    if updated_record:
+                        last_artifact = updated_record
+                        yield {
+                            "event": "artifact_created",
+                            "data": json.dumps(updated_record),
+                        }
+                        tool_output = f"[Successfully updated artifact '{art_id}' to version {updated_record.get('version')}]."
+                        result_msg = f"Updated: {updated_record.get('title')}"
+                    else:
+                        tool_output = f"[Failed to update artifact '{art_id}': not found]."
+                        result_msg = "Not found"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "update_artifact", "result": result_msg}),
+                    }
+
                 else:
                     tool_output = f"[Unknown tool: {fn_name}]"
 
@@ -628,6 +803,9 @@ class ResponsesRunner:
         }
         if last_proposal:
             done_payload["thread_proposal"] = last_proposal
+        if last_artifact:
+            done_payload["artifact"] = last_artifact
+            done_payload["artifact_id"] = last_artifact.get("id")
 
         yield {
             "event": "done",
