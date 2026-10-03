@@ -61,8 +61,7 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - .:/app
-      - velocity-sqlite-data:/app/data
-      - ./data/memory:/app/data/memory
+      - ./data:/app/data
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
@@ -80,5 +79,3 @@ services:
 volumes:
   velocity-postgres-data:
     name: velocity-postgres-data
-  velocity-sqlite-data:
-    name: velocity-sqlite-data
