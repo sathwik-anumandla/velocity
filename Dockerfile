@@ -2,10 +2,12 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install runtime dependencies (sqlite3, curl for healthchecks)
+# Install runtime dependencies (sqlite3, curl for healthchecks, DejaVu fonts for PDF engine)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     sqlite3 \
+    fonts-dejavu-core \
+    fonts-dejavu-mono \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
