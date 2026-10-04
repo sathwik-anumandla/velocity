@@ -528,6 +528,7 @@ async def list_sessions():
 
 
 @app.get("/sessions/{session_id}")
+@app.get("/api/sessions/{session_id}")
 async def get_session_details(session_id: str = Path(...)):
     """
     Get session metadata and all historical messages.
@@ -557,6 +558,37 @@ async def get_session_details(session_id: str = Path(...)):
         "session": SessionResponse(**session),
         "messages": enriched_messages,
     }
+
+
+@app.get("/sessions/{session_id}/messages", response_model=List[MessageResponse])
+@app.get("/api/sessions/{session_id}/messages", response_model=List[MessageResponse])
+async def get_session_messages_list(session_id: str = Path(...)):
+    """
+    Get direct list of historical messages for a session.
+    """
+    session = db_get_session(session_id)
+    if not session and session_id == "main":
+        init_db()
+        session = db_get_session("main")
+
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    messages = db_get_messages(session_id)
+    staged_actions = db_list_staged_actions(session_id=session_id)
+    staged_by_msg = {sa["message_id"]: sa for sa in staged_actions if sa.get("message_id")}
+
+    enriched_messages = []
+    for m in messages:
+        m_dict = dict(m)
+        if m_dict.get("artifact_id"):
+            m_dict["artifact"] = db_get_artifact(m_dict["artifact_id"])
+        if m_dict["id"] in staged_by_msg:
+            m_dict["staged_action"] = staged_by_msg[m_dict["id"]]
+        enriched_messages.append(MessageResponse(**m_dict))
+
+    return enriched_messages
+
 
 
 @app.patch("/sessions/{session_id}", response_model=SessionResponse)
@@ -628,6 +660,7 @@ async def search(q: str = Query(..., min_length=1, description="Search query")):
 # 4. Turn Execution Loop with Buffered SSE Streaming
 # ==============================================================================
 @app.post("/chat/stream")
+@app.post("/api/chat/stream")
 async def chat_stream(request: ChatRequest):
     """
     Per-turn loop:
