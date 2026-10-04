@@ -58,6 +58,7 @@ class MessageResponse(BaseModel):
     thread_proposal: Optional[str] = None
     artifact_id: Optional[str] = None
     artifact: Optional[Dict[str, Any]] = None
+    staged_action: Optional[Dict[str, Any]] = None
 
 
 class ArtifactCreate(BaseModel):
@@ -132,4 +133,42 @@ class ThreadResponse(BaseModel):
 
 class ProposalResponseAction(BaseModel):
     action: Literal["accept", "decline"]
+
+
+# ==============================================================================
+# Phase 4: Integrations & Staged Actions Schemas
+# ==============================================================================
+
+class IntegrationServiceStatus(BaseModel):
+    calendar: bool = False
+    tasks: bool = False
+    gmail: bool = False
+
+
+class IntegrationStatusResponse(BaseModel):
+    google_connected: bool = False
+    google_user_email: Optional[str] = None
+    services: IntegrationServiceStatus = IntegrationServiceStatus()
+    updated_at: Optional[str] = None
+
+
+class GoogleAuthUrlResponse(BaseModel):
+    url: str
+
+
+class StagedActionResponse(BaseModel):
+    id: str
+    session_id: str
+    message_id: Optional[str] = None
+    provider: str
+    action_type: str
+    parameters: Dict[str, Any]
+    status: str
+    result: Optional[Dict[str, Any]] = None
+    created_at: str
+    updated_at: str
+
+
+class ActionRespondRequest(BaseModel):
+    action: Literal["confirm", "decline"]
 

@@ -16,6 +16,7 @@ from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel
 
 from fastapi import FastAPI, HTTPException, Query, Path, Request, Response
+from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette.sse import EventSourceResponse
 from dotenv import load_dotenv
@@ -44,6 +45,11 @@ from backend.database import (
     list_artifacts as db_list_artifacts,
     update_artifact as db_update_artifact,
     delete_artifact as db_delete_artifact,
+    get_integration_token,
+    get_staged_action as db_get_staged_action,
+    update_staged_action_status as db_update_staged_action_status,
+    list_staged_actions as db_list_staged_actions,
+    update_staged_action_message_id as db_update_staged_action_message_id,
 )
 from backend.schemas import (
     ChatRequest,
@@ -59,9 +65,15 @@ from backend.schemas import (
     ArtifactCreate,
     ArtifactUpdate,
     ArtifactResponse,
+    IntegrationServiceStatus,
+    IntegrationStatusResponse,
+    GoogleAuthUrlResponse,
+    StagedActionResponse,
+    ActionRespondRequest,
 )
 from backend.pdf_service import generate_artifact_pdf
 from backend.hindsight import HindsightClient
+from backend.google_service import google_workspace
 from backend.prompt import (
     compose_responses_input,
     evaluate_summarization_waterfall,
@@ -474,11 +486,16 @@ async def get_session_details(session_id: str = Path(...)):
         raise HTTPException(status_code=404, detail="Session not found")
 
     messages = db_get_messages(session_id)
+    staged_actions = db_list_staged_actions(session_id=session_id)
+    staged_by_msg = {sa["message_id"]: sa for sa in staged_actions if sa.get("message_id")}
+
     enriched_messages = []
     for m in messages:
         m_dict = dict(m)
         if m_dict.get("artifact_id"):
             m_dict["artifact"] = db_get_artifact(m_dict["artifact_id"])
+        if m_dict["id"] in staged_by_msg:
+            m_dict["staged_action"] = staged_by_msg[m_dict["id"]]
         enriched_messages.append(MessageResponse(**m_dict))
 
     return {
@@ -746,6 +763,7 @@ async def chat_stream(request: ChatRequest):
                     thread_proposal_data = payload.get("thread_proposal", None)
                     artifact_data = payload.get("artifact", None)
                     artifact_id = payload.get("artifact_id", None)
+                    staged_action_data = payload.get("staged_action", None)
                 except Exception:
                     pass
             else:
@@ -795,6 +813,7 @@ async def chat_stream(request: ChatRequest):
                 "memory_status": overall_memory_status,
                 "artifact_id": artifact_id,
                 "artifact": artifact_data,
+                "staged_action": staged_action_data,
                 "created_at": now_iso,
             })
             temp_sessions[session_id]["last_tokens"] = new_total_tokens
@@ -826,6 +845,16 @@ async def chat_stream(request: ChatRequest):
                 except Exception as ex:
                     logger.warning(f"Could not link artifact {artifact_id} with message {asst_msg_id}: {ex}")
 
+            if staged_action_data and staged_action_data.get("id"):
+                try:
+                    await asyncio.to_thread(
+                        db_update_staged_action_message_id,
+                        staged_action_data["id"],
+                        asst_msg_id,
+                    )
+                except Exception as ex:
+                    logger.warning(f"Could not link staged action {staged_action_data['id']} with message {asst_msg_id}: {ex}")
+
             db_update_session(
                 session_id=session_id,
                 last_tokens=new_total_tokens,
@@ -843,6 +872,7 @@ async def chat_stream(request: ChatRequest):
                 "thread_proposal": thread_proposal_data,
                 "artifact": artifact_data,
                 "artifact_id": artifact_id,
+                "staged_action": staged_action_data,
             }),
         }
 
@@ -1372,6 +1402,157 @@ async def export_artifact_pdf_endpoint(artifact_id: str):
             "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "no-cache",
         },
+    )
+
+
+# ==============================================================================
+# Phase 4: Integrations & Google Workspace Endpoints
+# ==============================================================================
+
+@app.get("/api/integrations/status", response_model=IntegrationStatusResponse)
+async def get_integrations_status():
+    """
+    Returns the current connection status of external integrations (Google Workspace).
+    """
+    is_conn = google_workspace.is_connected()
+    user_email = google_workspace.get_user_email() if is_conn else None
+    token_row = get_integration_token("google")
+    updated_at = token_row.get("updated_at") if token_row else None
+
+    return IntegrationStatusResponse(
+        google_connected=is_conn,
+        google_user_email=user_email,
+        services=IntegrationServiceStatus(
+            calendar=is_conn,
+            tasks=is_conn,
+            gmail=is_conn,
+        ),
+        updated_at=updated_at,
+    )
+
+
+@app.delete("/api/integrations/google")
+async def disconnect_google_workspace():
+    """
+    Disconnects Google Workspace and deletes stored OAuth tokens.
+    """
+    success = await asyncio.to_thread(google_workspace.disconnect)
+    return {"status": "disconnected", "provider": "google", "success": success}
+
+
+@app.get("/api/auth/google/login", response_model=GoogleAuthUrlResponse)
+async def google_auth_login():
+    """
+    Generates and returns the Google OAuth consent URL.
+    """
+    try:
+        url = google_workspace.get_auth_url()
+        return GoogleAuthUrlResponse(url=url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error generating Google OAuth URL: {e}")
+        raise HTTPException(status_code=500, detail="Failed to initialize Google OAuth flow")
+
+
+@app.get("/api/auth/google/callback")
+async def google_auth_callback(code: Optional[str] = Query(None), error: Optional[str] = Query(None)):
+    """
+    Receives OAuth callback from Google, exchanges authorization code for tokens,
+    and redirects the user back to the web application Settings dialog.
+    """
+    if error:
+        logger.error(f"Google OAuth authorization error: {error}")
+        return RedirectResponse(url=f"/?settings=plugins&error={error}")
+
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
+
+    try:
+        await asyncio.to_thread(google_workspace.exchange_code, code)
+        return RedirectResponse(url="/?settings=plugins&connected=google")
+    except Exception as e:
+        logger.error(f"Google token exchange failed: {e}")
+        return RedirectResponse(url=f"/?settings=plugins&error={str(e)}")
+
+
+# ==============================================================================
+# Phase 4: Staged Actions Endpoints (Controlled Operations)
+# ==============================================================================
+
+@app.get("/api/actions", response_model=List[StagedActionResponse])
+async def list_actions(
+    session_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+):
+    """
+    List staged actions, optionally filtered by session or status.
+    """
+    actions = await asyncio.to_thread(db_list_staged_actions, session_id=session_id, status=status)
+    return [StagedActionResponse(**a) for a in actions]
+
+
+@app.get("/api/actions/{action_id}", response_model=StagedActionResponse)
+async def get_action(action_id: str):
+    """
+    Get details of a specific staged action.
+    """
+    action = await asyncio.to_thread(db_get_staged_action, action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="Action not found")
+    return StagedActionResponse(**action)
+
+
+@app.post("/api/actions/{action_id}/respond", response_model=StagedActionResponse)
+async def respond_to_action(action_id: str, payload: ActionRespondRequest):
+    """
+    Respond to a staged action (e.g. approve or decline sending an email).
+    """
+    action = await asyncio.to_thread(db_get_staged_action, action_id)
+    if not action:
+        raise HTTPException(status_code=404, detail="Action not found")
+
+    if action["status"] != "pending":
+        return StagedActionResponse(**action)
+
+    if payload.action == "decline":
+        updated = await asyncio.to_thread(
+            db_update_staged_action_status,
+            action_id,
+            status="declined",
+            result={"message": "Action declined by user"},
+        )
+        return StagedActionResponse(**updated)
+
+    # payload.action == "confirm"
+    if action["provider"] == "gmail" and action["action_type"] == "send_email":
+        params = action.get("parameters", {})
+        to = params.get("to", "")
+        subject = params.get("subject", "")
+        body = params.get("body", "")
+
+        try:
+            res = await asyncio.to_thread(google_workspace.send_email, to, subject, body)
+            updated = await asyncio.to_thread(
+                db_update_staged_action_status,
+                action_id,
+                status="executed",
+                result=res,
+            )
+            return StagedActionResponse(**updated)
+        except Exception as e:
+            logger.error(f"Failed to execute staged email action {action_id}: {e}")
+            updated = await asyncio.to_thread(
+                db_update_staged_action_status,
+                action_id,
+                status="failed",
+                result={"error": str(e)},
+            )
+            return StagedActionResponse(**updated)
+
+    raise HTTPException(
+        status_code=400,
+        detail=f"Unsupported action provider/type: {action.get('provider')}.{action.get('action_type')}",
     )
 
 

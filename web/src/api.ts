@@ -11,6 +11,8 @@ import type {
   NavigationLink,
   ChronologyEvent,
   Artifact,
+  IntegrationStatus,
+  StagedAction,
 } from './types';
 
 const API_BASE = ''; // relative URL, handled by Vite proxy in dev and FastAPI mount in prod
@@ -145,6 +147,7 @@ export interface StreamChatHandlers {
   onToolDone?: (tool: string, result?: string) => void;
   onThreadProposal?: (proposal: ThreadProposal) => void;
   onArtifactCreated?: (artifact: Artifact) => void;
+  onActionProposal?: (action: StagedAction) => void;
   onDelta: (text: string) => void;
   onComplete: (data: {
     text: string;
@@ -155,6 +158,7 @@ export interface StreamChatHandlers {
     thread_proposal?: ThreadProposal;
     artifact?: Artifact;
     artifact_id?: string;
+    staged_action?: StagedAction;
   }) => void;
   onError: (error: string) => void;
 }
@@ -251,10 +255,30 @@ export async function streamChatTurn(
                 handlers.onStatus?.('Fetching mental model');
               } else if (toolName === 'propose_side_chat') {
                 handlers.onStatus?.('Proposing side chat');
+              } else if (toolName === 'gcal_list_events') {
+                handlers.onStatus?.('Checking calendar');
+              } else if (toolName === 'gcal_create_event') {
+                handlers.onStatus?.('Scheduling event');
+              } else if (toolName === 'gcal_delete_event') {
+                handlers.onStatus?.('Deleting event');
+              } else if (toolName === 'gtasks_list_tasks') {
+                handlers.onStatus?.('Checking tasks');
+              } else if (toolName === 'gtasks_create_task') {
+                handlers.onStatus?.('Creating task');
+              } else if (toolName === 'gtasks_complete_task') {
+                handlers.onStatus?.('Completing task');
+              } else if (toolName === 'gmail_list_unread') {
+                handlers.onStatus?.('Checking emails');
+              } else if (toolName === 'gmail_create_draft') {
+                handlers.onStatus?.('Drafting email');
+              } else if (toolName === 'gmail_send_email') {
+                handlers.onStatus?.('Staging email for confirmation');
               }
               handlers.onToolStart?.(toolName, data.query || '');
             } else if (currentEvent === 'artifact_created') {
               handlers.onArtifactCreated?.(data);
+            } else if (currentEvent === 'action_proposal') {
+              handlers.onActionProposal?.(data);
             } else if (currentEvent === 'tool_done' || currentEvent === 'tool_result') {
               handlers.onToolDone?.(data.tool || 'tool', data.result || '');
             } else if (currentEvent === 'delta') {
@@ -269,6 +293,7 @@ export async function streamChatTurn(
                 thread_proposal: data.thread_proposal,
                 artifact: data.artifact,
                 artifact_id: data.artifact_id,
+                staged_action: data.staged_action,
               });
             } else if (currentEvent === 'error') {
               handlers.onError(data.error || 'Unknown error');
@@ -470,5 +495,53 @@ export async function getArtifact(artifactId: string): Promise<Artifact> {
 export function getArtifactPdfUrl(artifactId: string): string {
   return `${API_BASE}/api/artifacts/${artifactId}/export/pdf`;
 }
+
+// ==========================================
+// Phase 4: Integrations & Staged Actions
+// ==========================================
+
+export async function getIntegrationStatus(): Promise<IntegrationStatus> {
+  const res = await fetch(`${API_BASE}/api/integrations/status`);
+  if (!res.ok) throw new Error(`Failed to get integration status: ${res.status}`);
+  return res.json();
+}
+
+export async function disconnectGoogle(): Promise<{ status: string; provider: string }> {
+  const res = await fetch(`${API_BASE}/api/integrations/google`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to disconnect Google: ${res.status}`);
+  return res.json();
+}
+
+export async function getGoogleAuthUrl(): Promise<{ url: string }> {
+  const res = await fetch(`${API_BASE}/api/auth/google/login`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(err.detail || 'Failed to get Google OAuth URL');
+  }
+  return res.json();
+}
+
+export async function listStagedActions(sessionId?: string, status?: string): Promise<StagedAction[]> {
+  const params = new URLSearchParams();
+  if (sessionId) params.append('session_id', sessionId);
+  if (status) params.append('status', status);
+  const res = await fetch(`${API_BASE}/api/actions?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to list actions: ${res.status}`);
+  return res.json();
+}
+
+export async function respondToStagedAction(actionId: string, action: 'confirm' | 'decline'): Promise<StagedAction> {
+  const res = await fetch(`${API_BASE}/api/actions/${actionId}/respond`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(err.detail || `Failed to respond to action: ${res.status}`);
+  }
+  return res.json();
+}
+
 
 

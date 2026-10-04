@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { Pencil, Copy, Check, RotateCcw, GitBranch, ArrowRight, FileText, Download, PanelRight } from 'lucide-react';
 import type { ChatMessage, ThreadProposal, Artifact } from '../types';
 import { CodeBlock } from './CognitiveWidgets';
+import { ActionApprovalCard } from './ActionApprovalCard';
 
 interface ChatMessageViewProps {
   message: ChatMessage;
@@ -13,6 +14,7 @@ interface ChatMessageViewProps {
   onOpenThread?: (threadId: string) => void;
   onRespondProposal?: (messageId: string, action: 'accept' | 'decline') => void;
   onOpenArtifact?: (artifact: Artifact) => void;
+  onRespondAction?: (actionId: string, decision: 'confirm' | 'decline') => void | Promise<void>;
 }
 
 export const ChatMessageView: FC<ChatMessageViewProps> = ({
@@ -22,6 +24,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
   onOpenThread,
   onRespondProposal,
   onOpenArtifact,
+  onRespondAction,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -341,7 +344,15 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
         </div>
       )}
 
-      {/* 5. Bottom Message Actions: Copy, Regenerate — ALWAYS VISIBLE on every assistant response */}
+      {/* 5. Controlled Action Approval Card (e.g. Gmail Send Email) */}
+      {message.staged_action && (
+        <ActionApprovalCard
+          action={message.staged_action}
+          onRespond={onRespondAction}
+        />
+      )}
+
+      {/* 6. Bottom Message Actions: Copy, Regenerate — ALWAYS VISIBLE on every assistant response */}
       {!message.isStreaming && message.content && (
         <div className="flex items-center gap-1 mt-2 text-[var(--text-dim)]">
           <button

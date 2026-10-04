@@ -14,6 +14,7 @@ import {
   ExternalLink,
   CheckCircle2,
   RotateCcw,
+  Settings,
 } from 'lucide-react';
 import type { ActiveFlyout, ThreadItem, NavigationLink, ChronologyEvent, Session } from '../types';
 import * as api from '../api';
@@ -25,6 +26,7 @@ interface NavigationRailProps {
   onSelectFlyout: (flyout: ActiveFlyout) => void;
   onSelectSession: (sessionId: string) => void;
   onOpenMemoryInspector: () => void;
+  onOpenSettings?: () => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   isBackendOnline: boolean;
@@ -37,6 +39,8 @@ export const NavigationRail: FC<NavigationRailProps> = ({
   onSelectFlyout,
   onSelectSession,
   onOpenMemoryInspector,
+  onOpenSettings,
+
   theme,
   onToggleTheme,
   isBackendOnline,
@@ -343,6 +347,18 @@ export const NavigationRail: FC<NavigationRailProps> = ({
           >
             <Brain className="w-5 h-5" />
           </button>
+
+          {/* Settings & Plugins */}
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              title="Settings & Integrations"
+              className="w-11 h-11 rounded-xl flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900/80 transition-colors"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          )}
 
           {/* Theme Toggle */}
           <button

@@ -169,6 +169,38 @@ def init_db() -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_updated ON artifacts(updated_at DESC);")
 
+    # 6. Integration Tokens table for OAuth (Google Workspace)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS integration_tokens (
+        provider TEXT PRIMARY KEY,
+        access_token TEXT,
+        refresh_token TEXT,
+        expires_at TEXT,
+        scopes TEXT,
+        metadata TEXT,
+        updated_at TEXT NOT NULL
+    );
+    """)
+
+    # 7. Staged Actions table for write approval workflows (e.g. gmail_send_email)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS staged_actions (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        message_id TEXT DEFAULT NULL,
+        provider TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        parameters TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        result TEXT DEFAULT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_staged_actions_session ON staged_actions(session_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_staged_actions_status ON staged_actions(status);")
+
     conn.commit()
     conn.close()
 
@@ -845,3 +877,198 @@ def delete_artifact(artifact_id: str) -> bool:
     conn.commit()
     conn.close()
     return affected
+
+
+# ==============================================================================
+# Phase 4: Integration Tokens & Staged Actions CRUD
+# ==============================================================================
+
+def save_integration_token(
+    provider: str,
+    access_token: str,
+    refresh_token: Optional[str] = None,
+    expires_at: Optional[str] = None,
+    scopes: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc).isoformat()
+    meta_json = json.dumps(metadata) if metadata else None
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO integration_tokens (provider, access_token, refresh_token, expires_at, scopes, metadata, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(provider) DO UPDATE SET
+        access_token = excluded.access_token,
+        refresh_token = COALESCE(excluded.refresh_token, integration_tokens.refresh_token),
+        expires_at = excluded.expires_at,
+        scopes = COALESCE(excluded.scopes, integration_tokens.scopes),
+        metadata = COALESCE(excluded.metadata, integration_tokens.metadata),
+        updated_at = excluded.updated_at
+    """, (provider, access_token, refresh_token, expires_at, scopes, meta_json, now))
+    conn.commit()
+    conn.close()
+
+    return get_integration_token(provider) or {}
+
+
+def get_integration_token(provider: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM integration_tokens WHERE provider = ?", (provider,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    if d.get("metadata"):
+        try:
+            d["metadata"] = json.loads(d["metadata"])
+        except Exception:
+            pass
+    return d
+
+
+def delete_integration_token(provider: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM integration_tokens WHERE provider = ?", (provider,))
+    affected = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return affected
+
+
+def create_staged_action(
+    action_id: str,
+    session_id: str,
+    provider: str,
+    action_type: str,
+    parameters: Dict[str, Any],
+    message_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc).isoformat()
+    params_json = json.dumps(parameters)
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO staged_actions (
+        id, session_id, message_id, provider, action_type, parameters, status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    """, (action_id, session_id, message_id, provider, action_type, params_json, now, now))
+    conn.commit()
+    conn.close()
+
+    return {
+        "id": action_id,
+        "session_id": session_id,
+        "message_id": message_id,
+        "provider": provider,
+        "action_type": action_type,
+        "parameters": parameters,
+        "status": "pending",
+        "result": None,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def get_staged_action(action_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM staged_actions WHERE id = ?", (action_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return None
+    d = dict(row)
+    if d.get("parameters"):
+        try:
+            d["parameters"] = json.loads(d["parameters"])
+        except Exception:
+            pass
+    if d.get("result"):
+        try:
+            d["result"] = json.loads(d["result"])
+        except Exception:
+            pass
+    return d
+
+
+def update_staged_action_status(
+    action_id: str,
+    status: str,
+    result: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
+    now = datetime.now(timezone.utc).isoformat()
+    result_json = json.dumps(result) if result else None
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    UPDATE staged_actions SET
+        status = ?,
+        result = ?,
+        updated_at = ?
+    WHERE id = ?
+    """, (status, result_json, now, action_id))
+    conn.commit()
+    conn.close()
+
+    return get_staged_action(action_id)
+
+
+def list_staged_actions(
+    session_id: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+) -> List[Dict[str, Any]]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = "SELECT * FROM staged_actions WHERE 1=1"
+    params: List[Any] = []
+    if session_id:
+        query += " AND session_id = ?"
+        params.append(session_id)
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    query += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+
+    results = []
+    for r in rows:
+        d = dict(r)
+        if d.get("parameters"):
+            try:
+                d["parameters"] = json.loads(d["parameters"])
+            except Exception:
+                pass
+        if d.get("result"):
+            try:
+                d["result"] = json.loads(d["result"])
+            except Exception:
+                pass
+        results.append(d)
+    return results
+
+
+def update_staged_action_message_id(action_id: str, message_id: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    UPDATE staged_actions SET
+        message_id = ?,
+        updated_at = ?
+    WHERE id = ?
+    """, (message_id, now, action_id))
+    conn.commit()
+    conn.close()
+

@@ -82,6 +82,8 @@ export interface ChatMessage {
   // Artifact associations
   artifact_id?: string;
   artifact?: Artifact;
+  // Staged action for write approval (e.g. gmail_send_email)
+  staged_action?: StagedAction;
   // Dynamic streaming & tool state
   reasoning?: string;
   statusText?: string;
@@ -94,6 +96,38 @@ export interface ChatMessage {
     total_tokens?: number;
   };
 }
+
+export interface IntegrationServiceStatus {
+  calendar: boolean;
+  tasks: boolean;
+  gmail: boolean;
+}
+
+export interface IntegrationStatus {
+  google_connected: boolean;
+  google_user_email?: string | null;
+  services: IntegrationServiceStatus;
+  updated_at?: string | null;
+}
+
+export interface StagedAction {
+  id: string;
+  session_id: string;
+  message_id?: string | null;
+  provider: string;
+  action_type: string;
+  parameters: {
+    to?: string;
+    subject?: string;
+    body?: string;
+    [key: string]: any;
+  };
+  status: 'pending' | 'executed' | 'declined' | 'failed';
+  result?: any;
+  created_at: string;
+  updated_at: string;
+}
+
 
 export interface NavigationLink {
   url: string;

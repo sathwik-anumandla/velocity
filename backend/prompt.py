@@ -277,6 +277,31 @@ def compose_responses_input(
         "- The artifact will render in the side-by-side Artifact Canvas and mirror to the deterministic memory vault."
     )
 
+    # Google Workspace Integration Directive
+    try:
+        from backend.google_service import google_workspace
+        if google_workspace.is_connected():
+            user_email = google_workspace.get_user_email() or "active account"
+            instructions += (
+                f"\n\n[Google Workspace Integration - Connected ({user_email})]:\n"
+                "- Google Workspace tools (Calendar, Tasks, Gmail) are active.\n"
+                "- When Sathwik asks about schedule, meetings, or availability, proactively use `gcal_list_events`.\n"
+                "- When Sathwik wants to schedule a meeting or event, use `gcal_create_event` directly without asking for confirmation.\n"
+                "- When Sathwik mentions to-dos, action items, or reminders, use `gtasks_list_tasks` or `gtasks_create_task` directly.\n"
+                "- When Sathwik asks for unread emails, use `gmail_list_unread`.\n"
+                "- When Sathwik asks to draft an email, use `gmail_create_draft` directly.\n"
+                "- When Sathwik explicitly asks to send an email, use `gmail_send_email`. Explain that it is staged for confirmation, and an approval card has been displayed."
+            )
+        else:
+            instructions += (
+                "\n\n[Google Workspace Integration - Disconnected]:\n"
+                "- Google Workspace (Google Calendar, Tasks, Gmail) is currently not connected.\n"
+                "- If Sathwik asks to check calendar, schedule events, list/create tasks, or check/send emails, let him know that Google Workspace is disconnected, and that he can connect his Google account in Settings -> Plugins."
+            )
+    except Exception:
+        pass
+
+
     if verbosity == "low":
         instructions += (
             "\n\n[Verbosity Directive]: Respond with Low / Concise verbosity. "

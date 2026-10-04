@@ -23,7 +23,9 @@ from backend.hindsight import HindsightClient
 from backend.database import (
     create_artifact as db_create_artifact,
     update_artifact as db_update_artifact,
+    create_staged_action as db_create_staged_action,
 )
+from backend.google_service import google_workspace
 from backend.vault import (
     read_memory_doc as vault_read_doc,
     update_memory_section as vault_update_section,
@@ -237,6 +239,240 @@ UPDATE_ARTIFACT_TOOL_DEFINITION = {
     },
 }
 
+GCAL_LIST_EVENTS_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "gcal_list_events",
+    "description": (
+        "List events from Google Calendar. Use this when Sathwik asks about schedule, "
+        "agenda, availability, meetings, or free slots for today or upcoming days."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "time_min": {
+                "type": "string",
+                "description": "ISO 8601 start timestamp (e.g. 2026-10-04T00:00:00Z). Defaults to current time if omitted.",
+            },
+            "time_max": {
+                "type": "string",
+                "description": "ISO 8601 end timestamp (e.g. 2026-10-05T23:59:59Z). Defaults to 48 hours ahead if omitted.",
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Maximum number of events to return (default: 10).",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+GCAL_CREATE_EVENT_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "gcal_create_event",
+    "description": (
+        "Create an event on Google Calendar. Automatically schedules meetings, discussions, "
+        "or timeblocks directly without blocking for confirmation."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "Title or summary of the calendar event.",
+            },
+            "start_time": {
+                "type": "string",
+                "description": "ISO 8601 start datetime string, e.g. '2026-10-05T14:00:00Z'.",
+            },
+            "end_time": {
+                "type": "string",
+                "description": "ISO 8601 end datetime string, e.g. '2026-10-05T15:00:00Z'.",
+            },
+            "description": {
+                "type": "string",
+                "description": "Optional agenda, notes, or details for the event.",
+            },
+            "attendees": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of attendee email addresses to invite.",
+            },
+            "add_meet": {
+                "type": "boolean",
+                "description": "Whether to generate a Google Meet video conference link (default: true).",
+            },
+        },
+        "required": ["summary", "start_time", "end_time"],
+        "additionalProperties": False,
+    },
+}
+
+GCAL_DELETE_EVENT_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "gcal_delete_event",
+    "description": "Delete a calendar event from Google Calendar by its event ID.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "event_id": {
+                "type": "string",
+                "description": "The unique event ID of the calendar event to delete.",
+            },
+        },
+        "required": ["event_id"],
+        "additionalProperties": False,
+    },
+}
+
+GTASKS_LIST_TASKS_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "gtasks_list_tasks",
+    "description": (
+        "List to-do items from Google Tasks. Use when Sathwik asks about tasks, todos, "
+        "action items, or pending work."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "include_completed": {
+                "type": "boolean",
+                "description": "Whether to include completed tasks (default: false).",
+            },
+            "due_max": {
+                "type": "string",
+                "description": "Optional ISO timestamp to filter tasks due before this time.",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+GTASKS_CREATE_TASK_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "gtasks_create_task",
+    "description": (
+        "Create a new task in Google Tasks. Automatically captures to-dos, action items, "
+        "and deadlines without blocking for confirmation."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "description": "The title or description of the task.",
+            },
+            "notes": {
+                "type": "string",
+                "description": "Optional notes, details, or checklist items.",
+            },
+            "due": {
+                "type": "string",
+                "description": "Optional due date in ISO 8601 format (e.g. '2026-10-06T18:00:00Z' or '2026-10-06').",
+            },
+        },
+        "required": ["title"],
+        "additionalProperties": False,
+    },
+}
+
+GTASKS_COMPLETE_TASK_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "gtasks_complete_task",
+    "description": "Mark a task as completed in Google Tasks by its task ID.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "task_id": {
+                "type": "string",
+                "description": "The unique ID of the Google task to mark as completed.",
+            },
+        },
+        "required": ["task_id"],
+        "additionalProperties": False,
+    },
+}
+
+GMAIL_LIST_UNREAD_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "gmail_list_unread",
+    "description": (
+        "List recent unread emails and summaries from Gmail. "
+        "Use when Sathwik asks about new emails, inbox status, or message digests."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Search query for filtering emails (default: 'is:unread category:primary').",
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Maximum number of messages to return (default: 5).",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+GMAIL_CREATE_DRAFT_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "gmail_create_draft",
+    "description": (
+        "Create a draft email in Gmail. Safely prepares the email without sending it to recipients. "
+        "Use when Sathwik wants to draft, write, or stage an email."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "to": {
+                "type": "string",
+                "description": "Recipient email address.",
+            },
+            "subject": {
+                "type": "string",
+                "description": "Email subject line.",
+            },
+            "body": {
+                "type": "string",
+                "description": "Body content of the email.",
+            },
+        },
+        "required": ["to", "subject", "body"],
+        "additionalProperties": False,
+    },
+}
+
+GMAIL_SEND_EMAIL_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "gmail_send_email",
+    "description": (
+        "Stage sending an email via Gmail to external recipients. "
+        "IMPORTANT: This tool will NOT immediately send the message. "
+        "It generates an interactive confirmation card for Sathwik with Send and Decline buttons. "
+        "Only when Sathwik clicks Send will the message be transmitted."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "to": {
+                "type": "string",
+                "description": "Recipient email address.",
+            },
+            "subject": {
+                "type": "string",
+                "description": "Subject line of the email.",
+            },
+            "body": {
+                "type": "string",
+                "description": "Full body text of the email.",
+            },
+        },
+        "required": ["to", "subject", "body"],
+        "additionalProperties": False,
+    },
+}
+
 
 class ResponsesRunner:
     def __init__(self, hindsight: Optional[HindsightClient] = None):
@@ -321,11 +557,25 @@ class ResponsesRunner:
         tools.append(CREATE_ARTIFACT_TOOL_DEFINITION)
         tools.append(UPDATE_ARTIFACT_TOOL_DEFINITION)
 
+        # Google Workspace tools (available if connected)
+        if google_workspace.is_connected():
+            tools.append(GCAL_LIST_EVENTS_TOOL_DEFINITION)
+            tools.append(GCAL_CREATE_EVENT_TOOL_DEFINITION)
+            tools.append(GCAL_DELETE_EVENT_TOOL_DEFINITION)
+            tools.append(GTASKS_LIST_TASKS_TOOL_DEFINITION)
+            tools.append(GTASKS_CREATE_TASK_TOOL_DEFINITION)
+            tools.append(GTASKS_COMPLETE_TASK_TOOL_DEFINITION)
+            tools.append(GMAIL_LIST_UNREAD_TOOL_DEFINITION)
+            tools.append(GMAIL_CREATE_DRAFT_TOOL_DEFINITION)
+            tools.append(GMAIL_SEND_EMAIL_TOOL_DEFINITION)
+
         full_assistant_text = ""
         total_usage: Dict[str, Any] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         last_proposal: Optional[Dict[str, Any]] = None
         last_artifact: Optional[Dict[str, Any]] = None
+        last_staged_action: Optional[Dict[str, Any]] = None
         thinking_emitted = False
+
 
         for hop in range(max_tool_hops):
             # Run stream in thread pool to avoid blocking asyncio event loop
@@ -780,6 +1030,378 @@ class ResponsesRunner:
                         "data": json.dumps({"tool": "update_artifact", "result": result_msg}),
                     }
 
+                elif fn_name == "gcal_list_events":
+                    time_min, time_max, max_results = None, None, 10
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        time_min = parsed_args.get("time_min")
+                        time_max = parsed_args.get("time_max")
+                        max_results = int(parsed_args.get("max_results", 10))
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Checking calendar"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "gcal_list_events", "query": "Upcoming calendar events"}),
+                    }
+
+                    try:
+                        events = await loop.run_in_executor(
+                            None, google_workspace.list_calendar_events, time_min, time_max, max_results
+                        )
+                        if events:
+                            lines = []
+                            for ev in events:
+                                s = f"- {ev['summary']} ({ev['start']} to {ev['end']})"
+                                if ev.get("meet_link"):
+                                    s += f" [Meet: {ev['meet_link']}]"
+                                if ev.get("attendees"):
+                                    s += f" [Attendees: {', '.join(ev['attendees'])}]"
+                                lines.append(s)
+                            tool_output = f"[Google Calendar Events ({len(events)})]:\n" + "\n".join(lines)
+                            result_msg = f"{len(events)} events found"
+                        else:
+                            tool_output = "[No calendar events found in the requested time window]"
+                            result_msg = "No events"
+                    except Exception as ge:
+                        tool_output = f"[Failed to list calendar events: {str(ge)}]"
+                        result_msg = "Error"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "gcal_list_events", "result": result_msg}),
+                    }
+
+                elif fn_name == "gcal_create_event":
+                    summary, start_time, end_time = "", "", ""
+                    description, attendees, add_meet = None, None, True
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        summary = parsed_args.get("summary", "")
+                        start_time = parsed_args.get("start_time", "")
+                        end_time = parsed_args.get("end_time", "")
+                        description = parsed_args.get("description")
+                        attendees = parsed_args.get("attendees")
+                        add_meet = bool(parsed_args.get("add_meet", True))
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Scheduling event"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "gcal_create_event", "query": summary}),
+                    }
+
+                    try:
+                        created = await loop.run_in_executor(
+                            None,
+                            google_workspace.create_calendar_event,
+                            summary,
+                            start_time,
+                            end_time,
+                            description,
+                            attendees,
+                            add_meet,
+                        )
+                        tool_output = (
+                            f"[Successfully created calendar event '{summary}' from {start_time} to {end_time}. "
+                            f"Meet link: {created.get('meet_link') or 'None'}. ID: {created.get('id')}]"
+                        )
+                        result_msg = f"Created: {summary}"
+                    except Exception as ge:
+                        tool_output = f"[Failed to create calendar event: {str(ge)}]"
+                        result_msg = "Error"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "gcal_create_event", "result": result_msg}),
+                    }
+
+                elif fn_name == "gcal_delete_event":
+                    event_id = ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        event_id = parsed_args.get("event_id", "")
+                    except Exception:
+                        event_id = fn_args_raw
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Deleting event"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "gcal_delete_event", "query": event_id}),
+                    }
+
+                    try:
+                        res = await loop.run_in_executor(None, google_workspace.delete_calendar_event, event_id)
+                        tool_output = f"[Deleted calendar event {event_id}]"
+                        result_msg = "Deleted"
+                    except Exception as ge:
+                        tool_output = f"[Failed to delete calendar event: {str(ge)}]"
+                        result_msg = "Error"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "gcal_delete_event", "result": result_msg}),
+                    }
+
+                elif fn_name == "gtasks_list_tasks":
+                    include_completed, due_max = False, None
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        include_completed = bool(parsed_args.get("include_completed", False))
+                        due_max = parsed_args.get("due_max")
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Checking tasks"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "gtasks_list_tasks", "query": "Pending tasks"}),
+                    }
+
+                    try:
+                        tasks = await loop.run_in_executor(
+                            None, google_workspace.list_tasks, include_completed, due_max
+                        )
+                        if tasks:
+                            lines = []
+                            for t in tasks:
+                                line = f"- [{t['status']}] {t['title']} (ID: {t['id']})"
+                                if t.get("due"):
+                                    line += f" [Due: {t['due']}]"
+                                if t.get("notes"):
+                                    line += f" - Notes: {t['notes']}"
+                                lines.append(line)
+                            tool_output = f"[Google Tasks ({len(tasks)})]:\n" + "\n".join(lines)
+                            result_msg = f"{len(tasks)} tasks found"
+                        else:
+                            tool_output = "[No tasks found in Google Tasks]"
+                            result_msg = "No tasks"
+                    except Exception as ge:
+                        tool_output = f"[Failed to list tasks: {str(ge)}]"
+                        result_msg = "Error"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "gtasks_list_tasks", "result": result_msg}),
+                    }
+
+                elif fn_name == "gtasks_create_task":
+                    title, notes, due = "", None, None
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        title = parsed_args.get("title", "")
+                        notes = parsed_args.get("notes")
+                        due = parsed_args.get("due")
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Creating task"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "gtasks_create_task", "query": title}),
+                    }
+
+                    try:
+                        created_task = await loop.run_in_executor(
+                            None, google_workspace.create_task, title, notes, due
+                        )
+                        tool_output = f"[Created Google Task '{title}' (ID: {created_task.get('id')})]"
+                        result_msg = f"Created: {title}"
+                    except Exception as ge:
+                        tool_output = f"[Failed to create task: {str(ge)}]"
+                        result_msg = "Error"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "gtasks_create_task", "result": result_msg}),
+                    }
+
+                elif fn_name == "gtasks_complete_task":
+                    task_id = ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        task_id = parsed_args.get("task_id", "")
+                    except Exception:
+                        task_id = fn_args_raw
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Completing task"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "gtasks_complete_task", "query": task_id}),
+                    }
+
+                    try:
+                        done_task = await loop.run_in_executor(
+                            None, google_workspace.complete_task, task_id
+                        )
+                        tool_output = f"[Marked task '{done_task.get('title')}' as completed]"
+                        result_msg = "Completed"
+                    except Exception as ge:
+                        tool_output = f"[Failed to complete task: {str(ge)}]"
+                        result_msg = "Error"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "gtasks_complete_task", "result": result_msg}),
+                    }
+
+                elif fn_name == "gmail_list_unread":
+                    query, max_results = "is:unread category:primary", 5
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        query = parsed_args.get("query", "is:unread category:primary")
+                        max_results = int(parsed_args.get("max_results", 5))
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Checking emails"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "gmail_list_unread", "query": query}),
+                    }
+
+                    try:
+                        emails = await loop.run_in_executor(
+                            None, google_workspace.list_unread_emails, query, max_results
+                        )
+                        if emails:
+                            lines = []
+                            for em in emails:
+                                lines.append(
+                                    f"- From: {em['from']} | Subject: '{em['subject']}' | Snippet: {em['snippet']} (ID: {em['id']})"
+                                )
+                            tool_output = f"[Unread Gmail Messages ({len(emails)})]:\n" + "\n".join(lines)
+                            result_msg = f"{len(emails)} emails found"
+                        else:
+                            tool_output = "[No unread emails found matching criteria]"
+                            result_msg = "No unread"
+                    except Exception as ge:
+                        tool_output = f"[Failed to read Gmail: {str(ge)}]"
+                        result_msg = "Error"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "gmail_list_unread", "result": result_msg}),
+                    }
+
+                elif fn_name == "gmail_create_draft":
+                    to, subject, body = "", "", ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        to = parsed_args.get("to", "")
+                        subject = parsed_args.get("subject", "")
+                        body = parsed_args.get("body", "")
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Drafting email"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "gmail_create_draft", "query": f"Draft to {to}"}),
+                    }
+
+                    try:
+                        draft = await loop.run_in_executor(
+                            None, google_workspace.create_draft, to, subject, body
+                        )
+                        tool_output = f"[Created Gmail draft (Draft ID: {draft.get('id')}) to '{to}' with subject '{subject}']"
+                        result_msg = f"Drafted: {subject}"
+                    except Exception as ge:
+                        tool_output = f"[Failed to create Gmail draft: {str(ge)}]"
+                        result_msg = "Error"
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "gmail_create_draft", "result": result_msg}),
+                    }
+
+                elif fn_name == "gmail_send_email":
+                    to, subject, body = "", "", ""
+                    try:
+                        parsed_args = json.loads(fn_args_raw) if fn_args_raw else {}
+                        to = parsed_args.get("to", "")
+                        subject = parsed_args.get("subject", "")
+                        body = parsed_args.get("body", "")
+                    except Exception:
+                        pass
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Staging email for confirmation"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "gmail_send_email", "query": f"Send email to {to}"}),
+                    }
+
+                    action_id = f"act_{uuid.uuid4().hex[:12]}"
+                    action_payload = {
+                        "id": action_id,
+                        "session_id": session_id,
+                        "provider": "gmail",
+                        "action_type": "send_email",
+                        "parameters": {
+                            "to": to,
+                            "subject": subject,
+                            "body": body,
+                        },
+                        "status": "pending",
+                    }
+
+                    await loop.run_in_executor(
+                        None,
+                        db_create_staged_action,
+                        action_id,
+                        session_id,
+                        "gmail",
+                        "send_email",
+                        action_payload["parameters"],
+                        None,
+                    )
+                    last_staged_action = action_payload
+
+                    yield {
+                        "event": "action_proposal",
+                        "data": json.dumps(action_payload),
+                    }
+
+                    tool_output = (
+                        f"[Action staged for user confirmation: ID {action_id}. "
+                        "An interactive approval card has been displayed to Sathwik with Send and Decline options. "
+                        "Inform Sathwik that the email is drafted and staged, waiting for their confirmation to send.]"
+                    )
+
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "gmail_send_email", "result": f"Staged: {subject}"}),
+                    }
+
                 else:
                     tool_output = f"[Unknown tool: {fn_name}]"
 
@@ -806,8 +1428,11 @@ class ResponsesRunner:
         if last_artifact:
             done_payload["artifact"] = last_artifact
             done_payload["artifact_id"] = last_artifact.get("id")
+        if last_staged_action:
+            done_payload["staged_action"] = last_staged_action
 
         yield {
             "event": "done",
             "data": json.dumps(done_payload),
         }
+

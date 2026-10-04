@@ -30,6 +30,7 @@ import { ChatMessageView } from './components/ChatMessageView';
 import { ArtifactCanvas } from './components/ArtifactCanvas';
 import { SearchModal } from './components/SearchModal';
 import { MemoryInspectorModal } from './components/MemoryInspectorModal';
+import { SettingsModal } from './components/SettingsModal';
 import { getGreetingForCurrentTime } from './utils/greetings';
 
 export function App() {
@@ -52,6 +53,8 @@ export function App() {
   const [activeFlyout, setActiveFlyout] = useState<ActiveFlyout>('none');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'general' | 'plugins' | 'memory'>('plugins');
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const isUserScrolledUpRef = useRef(false);
 
@@ -78,6 +81,23 @@ export function App() {
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
+
+  // Check URL query parameters on mount (e.g. redirected from Google OAuth callback)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const settingsParam = params.get('settings');
+    const connectedParam = params.get('connected');
+    if (settingsParam || connectedParam) {
+      if (settingsParam === 'plugins' || settingsParam === 'general' || settingsParam === 'memory') {
+        setSettingsTab(settingsParam);
+      } else {
+        setSettingsTab('plugins');
+      }
+      setIsSettingsOpen(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
 
   // Options Popover & Toggles
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
@@ -399,6 +419,13 @@ export function App() {
             );
             setActiveArtifact((curr) => (curr && curr.id === art.id ? art : curr));
           },
+          onActionProposal: (action) => {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === asstMsgId ? { ...m, staged_action: action } : m
+              )
+            );
+          },
           onToolStart: (tool, query) => {
             setMessages((prev) =>
               prev.map((m) => {
@@ -448,6 +475,7 @@ export function App() {
                     thread_proposal: data.thread_proposal || m.thread_proposal,
                     artifact: data.artifact || m.artifact,
                     artifact_id: data.artifact_id || m.artifact_id,
+                    staged_action: data.staged_action || m.staged_action,
                   };
                 }
                 if (m.id === userMsgId && data.user_message_id) {
@@ -520,6 +548,24 @@ export function App() {
       console.error('Failed to respond to proposal:', err);
     }
   }, [handleSelectSession]);
+
+  // Handle user confirming or declining a staged action (e.g. Gmail Send Email)
+  const handleRespondAction = useCallback(async (actionId: string, decision: 'confirm' | 'decline') => {
+    try {
+      const updated = await api.respondToStagedAction(actionId, decision);
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.staged_action && m.staged_action.id === actionId) {
+            return { ...m, staged_action: updated };
+          }
+          return m;
+        })
+      );
+    } catch (err) {
+      console.error('Failed to respond to staged action:', err);
+    }
+  }, []);
+
 
   // Edit user prompt & resend
   const handleEditAndResend = async (messageId: string, newContent: string) => {
@@ -671,6 +717,10 @@ export function App() {
         onSelectFlyout={setActiveFlyout}
         onSelectSession={handleSelectSession}
         onOpenMemoryInspector={() => setIsMemoryInspectorOpen(true)}
+        onOpenSettings={() => {
+          setSettingsTab('plugins');
+          setIsSettingsOpen(true);
+        }}
         theme={theme}
         onToggleTheme={toggleTheme}
         isBackendOnline={isBackendOnline}
@@ -835,6 +885,7 @@ export function App() {
                       setActiveArtifact(art);
                       setIsCanvasOpen(true);
                     }}
+                    onRespondAction={handleRespondAction}
                   />
                 ))}
               </div>
@@ -888,6 +939,25 @@ export function App() {
         isOpen={isMemoryInspectorOpen}
         onClose={() => setIsMemoryInspectorOpen(false)}
         isBackendOnline={isBackendOnline}
+      />
+
+      {/* Settings Modal (Plugins & General) */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        initialTab={settingsTab}
+        currentModel={selectedModel}
+        onSelectModel={(m) => {
+          setSelectedModel(m);
+          localStorage.setItem('velocity-preferred-model', m);
+        }}
+        currentEffort={thinkingEffort}
+        onSelectEffort={setThinkingEffort}
+        currentVerbosity={verbosity}
+        onSelectVerbosity={setVerbosity}
+        currentRecallBudget={recallBudget}
+        onSelectRecallBudget={setRecallBudget}
+        onOpenMemoryInspector={() => setIsMemoryInspectorOpen(true)}
       />
     </div>
   );
