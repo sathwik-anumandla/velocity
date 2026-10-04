@@ -964,7 +964,13 @@ async def chat_stream(request: ChatRequest):
             }),
         }
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(
+        event_generator(),
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 # ==============================================================================
@@ -1863,7 +1869,13 @@ async def stream_proactive_events(request: Request):
         finally:
             event_dispatcher.unsubscribe_sse(q)
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(
+        event_generator(),
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        }
+    )
 
 
 
