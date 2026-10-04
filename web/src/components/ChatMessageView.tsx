@@ -85,8 +85,8 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
   // 1. User Message (Capsule on right)
   if (isUser) {
     return (
-      <div className="flex flex-col items-end mb-5 group w-full select-none">
-        <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#1e1e22] px-4 py-3 text-neutral-100 shadow-sm border-none">
+      <div className="flex flex-col items-end mb-2 group w-full select-none">
+        <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#1e1e22] px-4 py-2 text-neutral-100 shadow-sm border-none">
           {isEditing ? (
             <div className="flex flex-col gap-2 min-w-[280px] sm:min-w-[380px]">
               <textarea
@@ -166,7 +166,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
   // For Main Timeline: WhatsApp / iMessage peer-to-peer capsule mode (atomic delivery, 3-dot typing indicator)
 
   return (
-    <div className={`flex flex-col mb-6 group w-full ${isThread ? 'items-start' : 'items-start'}`}>
+    <div className={`flex flex-col mb-3 group w-full ${isThread ? 'items-start' : 'items-start'}`}>
       {/* Standalone Resource Pill for Branched Side Chat (Matching inspiration) */}
       {proposal && proposal.status === 'accepted' && proposal.thread_id && (
         <div
@@ -253,7 +253,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
         /* Main Timeline (Peer-to-Peer Capsule Layout) */
         message.isStreaming && !displayContent ? (
           /* 3-Dot Bouncing Typing Indicator for Atomic Delivery */
-          <div className="flex items-center gap-1.5 bg-[#121214] px-4 py-3 rounded-2xl w-fit shadow-sm">
+          <div className="flex items-center gap-1.5 bg-[#121214] px-4 py-2.5 rounded-2xl w-fit shadow-sm">
             <span
               className="w-2 h-2 rounded-full bg-neutral-400 animate-bounce"
               style={{ animationDelay: '0ms' }}
@@ -268,7 +268,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
             />
           </div>
         ) : displayContent ? (
-          <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#121214] px-4 py-3 text-neutral-100 shadow-sm border-none">
+          <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#121214] px-4 py-2 text-neutral-100 shadow-sm border-none">
             {/* Proactive Glowing Routine Header */}
             {routine && (
               <div

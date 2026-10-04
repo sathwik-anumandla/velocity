@@ -47,9 +47,34 @@ export function App() {
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
   const [canvasWidth, setCanvasWidth] = useState(620);
 
-  // Floating Approvals State (Docked directly above input)
-  const [pendingProposal, setPendingProposal] = useState<{ messageId: string; proposal: ThreadProposal } | null>(null);
-  const [pendingAction, setPendingAction] = useState<StagedAction | null>(null);
+  // Floating Approvals State (Derived reactively from messages - never disappears prematurely)
+  const pendingProposal = messages.reduceRight<{ messageId: string; proposal: ThreadProposal } | null>((acc, m) => {
+    if (acc) return acc;
+    if (m.thread_proposal) {
+      let prop: ThreadProposal | null = null;
+      if (typeof m.thread_proposal === 'object') {
+        prop = m.thread_proposal;
+      } else {
+        try {
+          prop = JSON.parse(m.thread_proposal);
+        } catch {
+          prop = null;
+        }
+      }
+      if (prop && (!prop.status || prop.status === 'pending')) {
+        return { messageId: m.id, proposal: prop };
+      }
+    }
+    return null;
+  }, null);
+
+  const pendingAction = messages.reduceRight<StagedAction | null>((acc, m) => {
+    if (acc) return acc;
+    if (m.staged_action && m.staged_action.status === 'pending') {
+      return m.staged_action;
+    }
+    return null;
+  }, null);
 
   // Navigation Rail & Flyouts
   const [activeFlyout, setActiveFlyout] = useState<ActiveFlyout>('none');
@@ -202,16 +227,19 @@ export function App() {
     }
   }, [messages, isStreaming, scrollToBottom]);
 
+  const isStreamingRef = useRef(false);
+  useEffect(() => {
+    isStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
   // Switch session: loads history for 'main' timeline or specific thread
   const handleSelectSession = useCallback(async (sessionId: string) => {
-    if (isStreaming) return;
+    if (isStreamingRef.current) return;
     const target = sessionId || 'main';
     localStorage.setItem('velocity-active-session', target);
     setCurrentSessionId(target);
     isUserScrolledUpRef.current = false;
     setIsUserScrolledUp(false);
-    setPendingProposal(null);
-    setPendingAction(null);
 
     if (target !== 'main') {
       try {
@@ -242,7 +270,7 @@ export function App() {
       setMessages([]);
       setActiveSession(null);
     }
-  }, [isStreaming, scrollToBottom]);
+  }, [scrollToBottom]);
 
   // Initial Load & Health Polling
   useEffect(() => {
@@ -272,7 +300,8 @@ export function App() {
       mounted = false;
       clearInterval(interval);
     };
-  }, [handleSelectSession]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Frictionless Side Chat Exit: automatically trigger background rollup
   const handleExitThread = useCallback(async () => {
@@ -471,13 +500,21 @@ export function App() {
             }
           },
           onThreadProposal: (proposal) => {
-            setPendingProposal({ messageId: asstMsgId, proposal });
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === asstMsgId ? { ...m, thread_proposal: proposal } : m
+              )
+            );
           },
           onArtifactCreated: (art) => {
             setActiveArtifact(art);
           },
           onActionProposal: (action) => {
-            setPendingAction(action);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === asstMsgId ? { ...m, staged_action: action } : m
+              )
+            );
           },
           onDelta: (deltaText) => {
             if (!isMainThread) {
@@ -518,15 +555,6 @@ export function App() {
                 return m;
               })
             );
-            if (data.thread_proposal && data.thread_proposal.status === 'pending') {
-              setPendingProposal({
-                messageId: data.assistant_message_id || asstMsgId,
-                proposal: data.thread_proposal,
-              });
-            }
-            if (data.staged_action && data.staged_action.status === 'pending') {
-              setPendingAction(data.staged_action);
-            }
             if (data.artifact) {
               setActiveArtifact(data.artifact);
             }
@@ -572,7 +600,11 @@ export function App() {
   const handleAcceptProposal = useCallback(async (messageId: string) => {
     try {
       const res = await api.respondToThreadProposal(messageId, 'accept');
-      setPendingProposal(null);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, thread_proposal: res.proposal } : m
+        )
+      );
       if (res.thread) {
         handleSelectSession(res.thread.id);
       }
@@ -583,8 +615,12 @@ export function App() {
 
   const handleDeclineProposal = useCallback(async (messageId: string) => {
     try {
-      await api.respondToThreadProposal(messageId, 'decline');
-      setPendingProposal(null);
+      const res = await api.respondToThreadProposal(messageId, 'decline');
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, thread_proposal: res.proposal } : m
+        )
+      );
       handleSendMessage('Please continue directly here in the main timeline.');
     } catch (err) {
       console.error('Failed to decline proposal:', err);
@@ -594,8 +630,14 @@ export function App() {
   // Floating Action Handlers (e.g. Gmail)
   const handleRespondAction = useCallback(async (actionId: string, decision: 'confirm' | 'decline') => {
     try {
-      await api.respondToStagedAction(actionId, decision);
-      setPendingAction(null);
+      const updated = await api.respondToStagedAction(actionId, decision);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.staged_action && m.staged_action.id === actionId
+            ? { ...m, staged_action: updated }
+            : m
+        )
+      );
     } catch (err) {
       console.error('Failed to respond to staged action:', err);
     }
@@ -914,7 +956,7 @@ export function App() {
             /* Main Continuous Timeline Top Bar - Bolder Logo Centered */
             <div className="flex items-center justify-center w-full relative">
               <div className="flex items-center gap-2">
-                <span className="text-base sm:text-lg font-black tracking-tight text-white uppercase">
+                <span className="text-lg sm:text-xl font-black tracking-tight text-white">
                   Velocity
                 </span>
               </div>
@@ -941,7 +983,7 @@ export function App() {
             <div
               ref={chatScrollRef}
               onScroll={handleScroll}
-              className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 flex flex-col justify-start"
+              className="flex-1 overflow-y-auto px-4 sm:px-8 py-3 flex flex-col justify-start"
             >
               <div className="w-full max-w-3xl mx-auto flex flex-col flex-1">
                 {messages.map((msg, idx) => {
@@ -950,7 +992,7 @@ export function App() {
                   return (
                     <div key={msg.id} className="w-full flex flex-col">
                       {isNewDay && (
-                        <div className="w-full flex items-center justify-center my-4 select-none">
+                        <div className="w-full flex items-center justify-center my-2.5 select-none">
                           <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
                             {formatDateDivider(msg.created_at)}
                           </span>
@@ -994,7 +1036,7 @@ export function App() {
             )}
 
             {/* Bottom Floating Input Capsule */}
-            <div className="p-4 sm:pb-6 sm:px-8 flex-shrink-0 flex justify-center w-full">
+            <div className="p-3 sm:pb-5 sm:px-8 flex-shrink-0 flex justify-center w-full">
               {renderInputCapsule(false)}
             </div>
           </div>
