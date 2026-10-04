@@ -337,7 +337,7 @@ def compose_responses_input(
     # Phase 5: Skills Architecture & Slash Command Routing
     try:
         from backend.skills_manager import find_skill_by_slash_command, get_skills_prompt_manifest
-        matched_skill = find_skill_by_slash_command(user_message)
+        matched_skill = find_skill_by_slash_command(new_user_message)
         if matched_skill:
             sk_name = matched_skill["name"]
             sk_instr = matched_skill.get("instructions", "")

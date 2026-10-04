@@ -27,6 +27,8 @@ from backend.database import (
     list_scheduled_events,
     create_scheduled_event,
     add_message,
+    get_messages,
+    get_session,
 )
 from backend.skills_manager import get_skill_instructions
 
@@ -377,11 +379,18 @@ class ProactiveScheduler:
         try:
             # Run stream turn, collecting full assistant output
             from backend.prompt import compose_responses_input
+            history_messages = await asyncio.to_thread(get_messages, session_id)
+            session_data = await asyncio.to_thread(get_session, session_id)
+            current_summary = session_data.get("summary") if session_data else None
+
             instructions, input_items = compose_responses_input(
-                session_id=session_id,
-                user_message=turn_prompt,
-                thinking_effort="medium",
+                messages=history_messages,
+                current_summary=current_summary,
+                recall_memories=[],
+                new_user_message=turn_prompt,
                 verbosity="low",
+                hot_memory=None,
+                is_thread=False,
             )
 
             assistant_text = ""
