@@ -370,6 +370,8 @@ class ProactiveScheduler:
             f"[AUTONOMOUS SCHEDULED TRIGGER: {event_name}]\n"
             f"Current Local Time: {now_local}\n"
             f"Directive: {prompt}\n"
+            "Operate autonomously. Execute required actions via available tools directly. "
+            "Deliver a structured, high-signal briefing or reflection without conversational filler or pleasantries.\n"
         )
         if skill_instructions:
             turn_prompt += f"\nSkill Specific Instructions:\n{skill_instructions}\n"
@@ -388,9 +390,10 @@ class ProactiveScheduler:
                 current_summary=current_summary,
                 recall_memories=[],
                 new_user_message=turn_prompt,
-                verbosity="low",
+                verbosity="medium",
                 hot_memory=None,
                 is_thread=False,
+                is_autonomous_routine=True,
             )
 
             assistant_text = ""
@@ -403,7 +406,7 @@ class ProactiveScheduler:
                 input_items=input_items,
                 session_id=session_id,
                 thinking_effort="medium",
-                verbosity="low",
+                verbosity="medium",
             ):
                 event_type = chunk.get("event")
                 if event_type == "delta":

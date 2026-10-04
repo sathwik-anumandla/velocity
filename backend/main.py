@@ -145,7 +145,11 @@ def classify_and_rename_session(user_message: str, session_id: str) -> Optional[
             "messages": [
                 {
                     "role": "user",
-                    "content": f"Generate a clean 3 to 5 word title for a conversation that starts with this prompt: \"{user_message}\". Return ONLY the title with no quotes, no markdown, and no punctuation at the end."
+                    "content": (
+                        "Generate a clean 3 to 5 word title for a conversation that starts with this message:\n"
+                        f"<user_message>\n{user_message}\n</user_message>\n"
+                        "Return ONLY the plain title text with no quotes, no markdown, and no punctuation at the end."
+                    )
                 }
             ],
             "max_completion_tokens": 500 if is_reasoning else 50,
@@ -212,24 +216,27 @@ Memories Retrieved:
 Current active_context.md:
 {current_active}
 
-Output your response ONLY as a JSON array of actions with this schema:
-[
-  {{
-    "action": "update_section",
-    "path": "core/active_context.md",
-    "section": "Immediate Focus",
-    "content": "new markdown content"
-  }}
-]
-If no updates are needed, output strictly: []
-Do not include markdown fences, backticks, or any other text outside the JSON array."""
+Output your response strictly as a JSON object with this schema:
+{{
+  "actions": [
+    {{
+      "action": "update_section",
+      "path": "core/active_context.md",
+      "section": "Immediate Focus",
+      "content": "new markdown content"
+    }}
+  ]
+}}
+If no updates are needed, output strictly: {{"actions": []}}
+Do not include markdown fences, backticks, or any other text outside the JSON object."""
 
         client = openai.OpenAI(api_key=api_key, base_url=base_url)
         is_reasoning = any(m in cheap_model.lower() for m in ["o1", "o3", "o4", "gpt-5"])
         kwargs: Dict[str, Any] = {
             "model": cheap_model,
             "messages": [{"role": "user", "content": synthesis_prompt}],
-            "max_completion_tokens": 1000,
+            "max_completion_tokens": 3000 if is_reasoning else 1500,
+            "response_format": {"type": "json_object"},
         }
         if is_reasoning:
             kwargs["reasoning_effort"] = "low"
@@ -244,7 +251,13 @@ Do not include markdown fences, backticks, or any other text outside the JSON ar
             clean_json = re.sub(r"^```(?:json)?\n", "", clean_json)
             clean_json = re.sub(r"\n```$", "", clean_json)
 
-        actions = json.loads(clean_json)
+        parsed_data = json.loads(clean_json)
+        actions = []
+        if isinstance(parsed_data, dict) and "actions" in parsed_data:
+            actions = parsed_data["actions"]
+        elif isinstance(parsed_data, list):
+            actions = parsed_data
+
         applied_count = 0
         if isinstance(actions, list):
             for act in actions:
@@ -1063,7 +1076,7 @@ async def synthesize_thread_rollup(thread: Dict[str, Any], messages: List[Dict[s
     updates the session in SQLite, and posts a 1-line update bump in the main timeline.
     """
     thread_id = thread["id"]
-    thread_name = thread.get("name", "Side Chat")
+    thread_name = thread.get("name", "Thread")
     parent_session_id = thread.get("parent_session_id") or "main"
 
     recent = messages[-20:]
@@ -1071,11 +1084,11 @@ async def synthesize_thread_rollup(thread: Dict[str, Any], messages: List[Dict[s
 
     prompt = (
         "You are Velocity's background thread synthesizer.\n"
-        f"Side Chat Title: {thread_name}\n\n"
-        "Recent Side Chat History:\n"
+        f"Thread Title: {thread_name}\n\n"
+        "Recent Thread History:\n"
         f"{formatted_convo}\n\n"
         "Instructions:\n"
-        "Summarize what was accomplished in this side chat, current technical state, and key decisions.\n"
+        "Summarize what was accomplished in this thread, current technical state, and key decisions.\n"
         "- Exactly 2 to 3 punchy, high-signal sentences.\n"
         "- Strictly NO emojis anywhere in your output.\n"
         "- No introductory filler (e.g. 'In this thread...', 'Here is a summary'). Direct, sharp statement."
@@ -1084,16 +1097,17 @@ async def synthesize_thread_rollup(thread: Dict[str, Any], messages: List[Dict[s
     try:
         api_key = os.getenv("OPENAI_API_KEY", "").strip()
         base_url = (os.getenv("OPENAI_BASE_URL", "") or "https://api.openai.com/v1").strip().rstrip("/")
+        cheap_model = (os.getenv("SYNTHESIS_MODEL_ID") or os.getenv("CLASSIFIER_MODEL_ID") or "gpt-5.4-mini").strip()
         client = openai.OpenAI(api_key=api_key, base_url=base_url)
 
         resp = await asyncio.to_thread(
             client.chat.completions.create,
-            model="gpt-5.4-mini",
+            model=cheap_model,
             messages=[
                 {"role": "system", "content": "You are a concise engineering synthesizer. Output strictly 2-3 sentences. No emojis."},
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=250,
+            max_completion_tokens=400,
         )
         summary = resp.choices[0].message.content.strip()
 
@@ -1102,7 +1116,7 @@ async def synthesize_thread_rollup(thread: Dict[str, Any], messages: List[Dict[s
         db_update_thread(thread_id, rollup_summary=summary, status=new_status)
 
         # Drop update bump in main timeline
-        prefix = "Side Chat Concluded" if conclude else "Side Chat Update"
+        prefix = "Thread Concluded" if conclude else "Thread Update"
         bump_content = f"[{prefix}: {thread_name}]\n{summary}"
         bump_id = str(uuid.uuid4())
         db_add_message(

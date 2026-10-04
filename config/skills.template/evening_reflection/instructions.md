@@ -10,3 +10,6 @@ Execute this procedure when conducting the evening reflection:
    - Direct, reflective, peer tone.
    - Zero generic praise or cheerleading.
    - Keep closing remarks concise (1-3 sentences).
+6. Handling disconnected or empty integrations:
+   - If Google Tasks is disconnected or returns no tasks, reflect on today's active context directly and ask about today's focus.
+   - Never fabricate or simulate fake task lists.

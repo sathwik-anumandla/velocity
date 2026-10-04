@@ -1093,10 +1093,9 @@ class ResponsesRunner:
                     }
 
                     tool_output = (
-                        f"[Proposed side chat '{title}' to Sathwik. "
-                        "A proposal card is now displayed in the UI. "
-                        "Provide a brief 1-2 sentence overview of why branching here keeps things clean "
-                        "and what will be tackled in the side chat.]"
+                        f"[Thread proposal card for '{title}' is now rendered in the UI with action buttons. "
+                        "Output exactly ONE forward-looking orientation sentence in your response. "
+                        "Do NOT repeat the thread title or reason, and do NOT ask for confirmation.]"
                     )
 
                     yield {

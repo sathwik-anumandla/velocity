@@ -234,12 +234,13 @@ def compose_responses_input(
     verbosity: str = "medium",
     hot_memory: Optional[Dict[str, str]] = None,
     is_thread: bool = False,
+    is_autonomous_routine: bool = False,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Composes the Responses API input strictly following the cache-optimal order:
-    1. system prompt (returned as instructions) + persona directive + hot mental models
+    1. system prompt (returned as instructions) + persona directive + core memory vault
     2. windowed conversation history (summary + sliding window tail)
-    3. recall results (this turn)
+    3. active skill / recall results (this turn)
     4. new user message
 
     Returns:
@@ -249,21 +250,30 @@ def compose_responses_input(
 
     instructions = load_system_prompt()
 
-    # Persona bifurcation: Main Timeline vs Deep Side Chat
-    if not is_thread:
+    # Persona bifurcation: Autonomous Routine vs Main Timeline vs Dedicated Thread
+    if is_autonomous_routine:
+        instructions += (
+            "\n\n[Persona Directive - Autonomous Routine Execution]:\n"
+            "- You are executing an autonomous background routine or scheduled event.\n"
+            "- Execute required actions directly using tools (Calendar, Tasks, Gmail, Memory Vault).\n"
+            "- Deliver a clean, structured, high-signal briefing or reflection without conversational filler or pleasantries.\n"
+            "- Present information clearly with sections, bulleted items, and explicit status.\n"
+            "- If integrations (Google Calendar, Tasks, Gmail) are disconnected or return no entries, explicitly report that status. Never hallucinate or fabricate events, tasks, or emails."
+        )
+    elif not is_thread:
         instructions += (
             "\n\n[Persona Directive - Main Timeline]:\n"
-            "- Default length: 1 to 3 punchy, high-signal sentences for conversational turns, questions, and acknowledgments.\n"
+            "- Length Calibration: Default to 1 to 3 punchy, high-signal sentences strictly for conversational turns, acknowledgments, status checks, and simple factual queries. For architectural explanations, engineering analysis, and direct code solutions requested in the main timeline, provide complete, self-contained depth without artificial truncation.\n"
+            "- Tone: Speak like a trusted longtime engineering collaborator: warm, perceptive, intellectually sharp, natural, and grounded in real-world engineering.\n"
             "- Zero conversational filler: Never say 'Certainly!', 'I would be glad to help', 'Great question', or performative pleasantries.\n"
-            "- Zero unprompted lists: Avoid robotic bulleted lists unless explicitly asked, comparing distinct options, or providing ordered steps.\n"
-            "- Tone: Speak like a trusted longtime engineering collaborator. Warm, perceptive, intellectually sharp, and natural.\n"
-            "- Side Chat (Thread) Proposals: When Sathwik asks for a complex multi-step technical implementation, long-form debugging session, or multi-turn exploration that would clutter the main timeline, use the `propose_side_chat` tool to propose branching into a side chat. Never create a side chat without proposing and getting approval unless Sathwik explicitly commanded it.\n"
-            "- Overriding Side Chat Proposals: If Sathwik explicitly asks to continue in the main timeline, declines a side chat proposal, or tells you to solve it here, do NOT propose a side chat again. Provide the complete, exhaustive technical solution and code directly in the main timeline."
+            "- Structured Formatting: Default to natural, cohesive prose for brief explanations. Use structured bullets, numbered steps, or tables whenever comparing options, walking through sequential processes, diagnosing multi-factor issues, or when structure materially improves clarity.\n"
+            "- Thread Proposals: When Sathwik asks for a complex multi-step technical implementation, long-form debugging session, or multi-turn exploration that would clutter the main timeline, use the `propose_side_chat` tool to propose branching into a dedicated thread. Never branch into a thread without proposing and getting approval unless Sathwik explicitly commanded it.\n"
+            "- Overriding Thread Proposals & Execution: If Sathwik explicitly asks to continue in the main timeline, declines a thread proposal ('Continue here' / 'Solve it here'), or tells you to solve it directly, do NOT propose a thread. The 1-3 sentence brevity cap is completely suspended: immediately provide the complete, exhaustive technical solution and production-grade runnable code directly in the main timeline."
         )
     else:
         instructions += (
-            "\n\n[Persona Directive - Side Chat / Deep Dive Workspace]:\n"
-            "- You are in a dedicated Side Chat workspace for deep focus.\n"
+            "\n\n[Persona Directive - Dedicated Thread / Deep Dive Workspace]:\n"
+            "- You are in a dedicated Thread workspace for deep focus.\n"
             "- Deliver exhaustive technical depth: full code implementations, detailed step-by-step reasoning, stack trace debugging, and edge case analysis.\n"
             "- Be rigorous, structured, and thorough. Provide complete, runnable code blocks without placeholder comments.\n"
             "- Maintain a warm, highly focused engineering presence."
@@ -301,18 +311,16 @@ def compose_responses_input(
     except Exception:
         pass
 
-
     if verbosity == "low":
         instructions += (
-            "\n\n[Verbosity Directive]: Respond with Low / Concise verbosity. "
-            "Be direct, punchy, and eliminate conversational filler, fluff, or excessive preamble. "
-            "Keep the response in a compact, natural paragraph rather than a bulleted list."
+            "\n\n[Verbosity Directive]: Low / Concise. "
+            "Be direct, punchy, and eliminate conversational filler. "
+            "Deliver the smallest complete answer that satisfies the request."
         )
     elif verbosity == "high":
         instructions += (
-            "\n\n[Verbosity Directive]: Respond with High / Detailed verbosity. "
-            "Provide in-depth explanations, thorough background context, edge cases, and complete examples, "
-            "maintaining natural conversational paragraphs."
+            "\n\n[Verbosity Directive]: High / Detailed. "
+            "Provide in-depth explanations, thorough background context, edge cases, and complete examples."
         )
 
     # Inject deterministic memory vault context (profile, preferences, active context, dossiers index)
@@ -334,20 +342,21 @@ def compose_responses_input(
                     f"\n\n[Persistent Memory - Current Context & Open Loops]:\n{current_context.strip()}"
                 )
 
-    # Phase 5: Skills Architecture & Slash Command Routing
+    # Phase 5: Skills Architecture & Slash Command Routing (Prefix cache protected)
+    active_skill_prompt: Optional[str] = None
     try:
         from backend.skills_manager import find_skill_by_slash_command, get_skills_prompt_manifest
+        manifest_str = get_skills_prompt_manifest()
+        instructions += f"\n\n[Skills Architecture]:\n{manifest_str}\n"
+
         matched_skill = find_skill_by_slash_command(new_user_message)
         if matched_skill:
             sk_name = matched_skill["name"]
             sk_instr = matched_skill.get("instructions", "")
-            instructions += (
-                f"\n\n[Active Modular Skill - {sk_name}]:\n"
-                f"Follow these specific procedural instructions for this turn:\n{sk_instr}\n"
+            active_skill_prompt = (
+                f"[Active Skill Invocation - {sk_name}]:\n"
+                f"Follow these specific procedural instructions for this turn:\n{sk_instr}"
             )
-        else:
-            manifest_str = get_skills_prompt_manifest()
-            instructions += f"\n\n[Skills Architecture]:\n{manifest_str}\n"
     except Exception:
         pass
 
@@ -376,7 +385,7 @@ def compose_responses_input(
             "content": f"[Conversation Summary of earlier turns]:\n{current_summary.strip()}",
         })
 
-    # Windowed tail: 16 turns for main lifelong timeline, up to 30 turns for deep side chats
+    # Windowed tail: 16 turns for main lifelong timeline, up to 30 turns for deep threads
     window_size = 30 if is_thread else 16
     tail = messages[-window_size:] if len(messages) > window_size else messages
     for msg in tail:
@@ -389,7 +398,14 @@ def compose_responses_input(
                 "content": content,
             })
 
-    # 3. Recall results (this turn) — volatile, placed AFTER history to protect prefix cache
+    # 3. Active skill procedural instructions (if triggered via slash command)
+    if active_skill_prompt:
+        input_items.append({
+            "role": "system",
+            "content": active_skill_prompt,
+        })
+
+    # 4. Recall results (this turn) — volatile, placed AFTER history to protect prefix cache
     if recall_memories:
         memory_bullets = "\n".join(f"- {mem}" for mem in recall_memories if mem.strip())
         if memory_bullets:
@@ -402,7 +418,7 @@ def compose_responses_input(
                 ),
             })
 
-    # 4. New user message
+    # 5. New user message
     input_items.append({
         "role": "user",
         "content": new_user_message,
