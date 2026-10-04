@@ -76,9 +76,10 @@ export const SettingsModal: FC<SettingsModalProps> = ({
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [newScheduleName, setNewScheduleName] = useState('');
   const [newScheduleType, setNewScheduleType] = useState<'recurring' | 'one_shot'>('recurring');
+  const [newScheduleFrequency, setNewScheduleFrequency] = useState<'daily' | 'weekdays' | 'weekends'>('daily');
+  const [newScheduleTime, setNewScheduleTime] = useState('08:00');
+  const [newScheduleDateTime, setNewScheduleDateTime] = useState('');
   const [newSchedulePrompt, setNewSchedulePrompt] = useState('');
-  const [newScheduleCron, setNewScheduleCron] = useState('0 8 * * *');
-  const [newScheduleRunAt, setNewScheduleRunAt] = useState('');
   const [newScheduleSkillId, setNewScheduleSkillId] = useState('');
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
@@ -193,12 +194,79 @@ export const SettingsModal: FC<SettingsModalProps> = ({
     }
   };
 
+  const formatScheduleTiming = (sched: ScheduledEvent): string => {
+    if (sched.event_type === 'recurring' && sched.cron_expression) {
+      const parts = sched.cron_expression.trim().split(/\s+/);
+      if (parts.length >= 5) {
+        const [minute, hour, dom, mon, dow] = parts;
+        const h = parseInt(hour, 10);
+        const m = parseInt(minute, 10);
+        if (!isNaN(h) && !isNaN(m)) {
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const displayH = h % 12 === 0 ? 12 : h % 12;
+          const displayM = m < 10 ? `0${m}` : `${m}`;
+          const timeStr = `${displayH}:${displayM} ${ampm}`;
+
+          if (dow === '1-5') return `Weekdays at ${timeStr}`;
+          if (dow === '6,0' || dow === '0,6') return `Weekends at ${timeStr}`;
+          if (dom === '*' && mon === '*' && dow === '*') return `Every day at ${timeStr}`;
+          return `At ${timeStr}`;
+        }
+      }
+      return sched.cron_expression;
+    }
+
+    if (sched.event_type === 'one_shot') {
+      const target = sched.run_at || sched.next_run_at;
+      if (target) {
+        try {
+          const d = new Date(target);
+          return `One-shot: ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+        } catch {
+          return 'One-Shot';
+        }
+      }
+      return 'One-Shot';
+    }
+
+    return 'Scheduled';
+  };
+
   const handleCreateScheduleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newScheduleName.trim() || !newSchedulePrompt.trim()) {
       setScheduleError('Name and prompt directive are required.');
       return;
     }
+
+    let cronExpr: string | undefined = undefined;
+    if (newScheduleType === 'recurring') {
+      const [hStr, mStr] = (newScheduleTime || '08:00').split(':');
+      const h = parseInt(hStr, 10) || 0;
+      const m = parseInt(mStr, 10) || 0;
+      if (newScheduleFrequency === 'weekdays') {
+        cronExpr = `${m} ${h} * * 1-5`;
+      } else if (newScheduleFrequency === 'weekends') {
+        cronExpr = `${m} ${h} * * 6,0`;
+      } else {
+        cronExpr = `${m} ${h} * * *`;
+      }
+    }
+
+    let runAtIso: string | undefined = undefined;
+    if (newScheduleType === 'one_shot') {
+      if (!newScheduleDateTime) {
+        setScheduleError('Please select a date and time for the reminder.');
+        return;
+      }
+      try {
+        runAtIso = new Date(newScheduleDateTime).toISOString();
+      } catch {
+        setScheduleError('Invalid date/time selected.');
+        return;
+      }
+    }
+
     setScheduleError(null);
     setIsSubmittingSchedule(true);
     try {
@@ -206,14 +274,18 @@ export const SettingsModal: FC<SettingsModalProps> = ({
         name: newScheduleName.trim(),
         event_type: newScheduleType,
         prompt: newSchedulePrompt.trim(),
-        cron_expression: newScheduleType === 'recurring' ? newScheduleCron.trim() : undefined,
-        run_at: newScheduleType === 'one_shot' ? newScheduleRunAt.trim() : undefined,
+        cron_expression: cronExpr,
+        run_at: runAtIso,
         skill_id: newScheduleSkillId.trim() || undefined,
         session_id: 'main',
       });
       setIsCreatingSchedule(false);
       setNewScheduleName('');
       setNewSchedulePrompt('');
+      setNewScheduleTime('08:00');
+      setNewScheduleFrequency('daily');
+      setNewScheduleDateTime('');
+      setNewScheduleSkillId('');
       await loadSchedules();
     } catch (err: any) {
       setScheduleError(err.message || 'Failed to create schedule');
@@ -506,41 +578,50 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-zinc-400 mb-1">Type</label>
+                      <label className="block text-zinc-400 mb-1">Schedule Type</label>
                       <select
                         value={newScheduleType}
                         onChange={(e) => setNewScheduleType(e.target.value as any)}
                         className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
                       >
-                        <option value="recurring">Recurring (Cron)</option>
+                        <option value="recurring">Recurring Schedule</option>
                         <option value="one_shot">One-Shot Reminder</option>
                       </select>
                     </div>
                   </div>
 
                   {newScheduleType === 'recurring' ? (
-                    <div>
-                      <label className="block text-zinc-400 mb-1">Cron Expression (5-field)</label>
-                      <input
-                        type="text"
-                        value={newScheduleCron}
-                        onChange={(e) => setNewScheduleCron(e.target.value)}
-                        placeholder="0 8 * * * (8:00 AM daily)"
-                        className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 font-mono text-xs focus:outline-none focus:border-zinc-500"
-                      />
-                      <span className="text-[10px] text-zinc-500 mt-1 block">
-                        Example: <code>0 8 * * *</code> = 08:00 AM daily, <code>0 21 * * *</code> = 09:00 PM daily.
-                      </span>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Repeat</label>
+                        <select
+                          value={newScheduleFrequency}
+                          onChange={(e) => setNewScheduleFrequency(e.target.value as any)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
+                        >
+                          <option value="daily">Every day</option>
+                          <option value="weekdays">Weekdays (Mon - Fri)</option>
+                          <option value="weekends">Weekends (Sat - Sun)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-zinc-400 mb-1">Time (Asia/Kolkata)</label>
+                        <input
+                          type="time"
+                          value={newScheduleTime}
+                          onChange={(e) => setNewScheduleTime(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
+                        />
+                      </div>
                     </div>
                   ) : (
                     <div>
-                      <label className="block text-zinc-400 mb-1">Run At (ISO timestamp)</label>
+                      <label className="block text-zinc-400 mb-1">Date & Time (Asia/Kolkata)</label>
                       <input
-                        type="text"
-                        value={newScheduleRunAt}
-                        onChange={(e) => setNewScheduleRunAt(e.target.value)}
-                        placeholder="2026-10-04T22:00:00"
-                        className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 font-mono text-xs focus:outline-none focus:border-zinc-500"
+                        type="datetime-local"
+                        value={newScheduleDateTime}
+                        onChange={(e) => setNewScheduleDateTime(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
                       />
                     </div>
                   )}
@@ -613,8 +694,8 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                       <div className="space-y-1 max-w-[70%]">
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-zinc-100">{sched.name}</span>
-                          <span className="px-1.5 py-0.5 rounded font-mono text-[10px] bg-zinc-800 text-zinc-300">
-                            {sched.event_type === 'recurring' ? sched.cron_expression : 'One-Shot'}
+                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300">
+                            {formatScheduleTiming(sched)}
                           </span>
                           <span
                             className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${

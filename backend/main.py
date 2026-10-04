@@ -94,6 +94,7 @@ from backend.scheduler import (
     event_dispatcher,
     compute_next_run,
     get_user_timezone_str,
+    seed_default_schedules_if_needed,
 )
 from backend.pdf_service import generate_artifact_pdf
 from backend.hindsight import HindsightClient
@@ -356,6 +357,10 @@ async def lifespan(app: FastAPI):
     # Seed modular skills from template if not present
     await asyncio.to_thread(seed_skills_if_needed)
     logger.info("Modular Skills checked/initialized")
+
+    # Seed default scheduled events if not present
+    await asyncio.to_thread(seed_default_schedules_if_needed)
+    logger.info("Default Scheduled Events checked/initialized")
 
     # Bootstrap Hindsight memory bank & foundational mental models in the background
     asyncio.create_task(asyncio.to_thread(hindsight_client.bootstrap_memory_bank))

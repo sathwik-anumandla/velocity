@@ -24,6 +24,8 @@ from backend.database import (
     get_due_scheduled_events,
     update_scheduled_event,
     get_scheduled_event,
+    list_scheduled_events,
+    create_scheduled_event,
     add_message,
 )
 from backend.skills_manager import get_skill_instructions
@@ -96,6 +98,52 @@ def compute_next_run(
             return None
 
     return None
+
+
+def seed_default_schedules_if_needed() -> None:
+    """
+    Seeds starter scheduled events (morning briefing and evening reflection)
+    if no scheduled events currently exist in the database.
+    """
+    try:
+        events = list_scheduled_events()
+        if events:
+            return
+
+        tz_str = get_user_timezone_str()
+        # 1. Daily Morning Briefing at 08:00 AM daily
+        next_morning = compute_next_run(cron_expr="0 8 * * *", timezone_str=tz_str)
+        create_scheduled_event(
+            name="Daily Morning Briefing",
+            event_type="recurring",
+            cron_expression="0 8 * * *",
+            timezone_str=tz_str,
+            prompt="Synthesize today's morning briefing: summarize upcoming calendar events, pending tasks, priorities, and recent updates.",
+            skill_id="morning_briefing",
+            session_id="main",
+            status="active",
+            next_run_at=next_morning,
+            event_id="sched_morning_briefing",
+        )
+        logger.info(f"Seeded default schedule 'Daily Morning Briefing' (next run: {next_morning})")
+
+        # 2. Daily Evening Reflection at 09:00 PM daily
+        next_evening = compute_next_run(cron_expr="0 21 * * *", timezone_str=tz_str)
+        create_scheduled_event(
+            name="Daily Evening Reflection",
+            event_type="recurring",
+            cron_expression="0 21 * * *",
+            timezone_str=tz_str,
+            prompt="Conduct evening reflection: review completed tasks, reflect on today's progress, and set initial thoughts for tomorrow.",
+            skill_id="evening_reflection",
+            session_id="main",
+            status="active",
+            next_run_at=next_evening,
+            event_id="sched_evening_reflection",
+        )
+        logger.info(f"Seeded default schedule 'Daily Evening Reflection' (next run: {next_evening})")
+    except Exception as e:
+        logger.error(f"Failed to seed default scheduled events: {e}")
 
 
 class ProactiveEventDispatcher:
