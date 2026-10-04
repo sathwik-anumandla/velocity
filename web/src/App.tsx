@@ -2,15 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ArrowUp,
   Square,
-  Ghost,
   ArrowDown,
   ArrowLeft,
   GitBranch,
-  CheckCircle2,
-  RotateCcw,
   Sparkles,
   Plus,
-  Clock,
 } from 'lucide-react';
 import type {
   ChatMessage,
@@ -22,6 +18,9 @@ import type {
   ThreadItem,
   Session,
   Artifact,
+  ThreadProposal,
+  StagedAction,
+  Skill,
 } from './types';
 import * as api from './api';
 import { NavigationRail } from './components/NavigationRail';
@@ -42,19 +41,22 @@ export function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isBackendOnline, setIsBackendOnline] = useState(true);
   const [healthDetails, setHealthDetails] = useState<api.HealthDetails | null>(null);
-  const [isTemporary, setIsTemporary] = useState(false);
 
   // Artifact Canvas State
   const [activeArtifact, setActiveArtifact] = useState<Artifact | null>(null);
   const [isCanvasOpen, setIsCanvasOpen] = useState(false);
   const [canvasWidth, setCanvasWidth] = useState(620);
 
+  // Floating Approvals State (Docked directly above input)
+  const [pendingProposal, setPendingProposal] = useState<{ messageId: string; proposal: ThreadProposal } | null>(null);
+  const [pendingAction, setPendingAction] = useState<StagedAction | null>(null);
+
   // Navigation Rail & Flyouts
   const [activeFlyout, setActiveFlyout] = useState<ActiveFlyout>('none');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'plugins' | 'memory' | 'schedules' | 'skills'>('plugins');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'plugins' | 'memory' | 'schedules' | 'skills'>('general');
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const isUserScrolledUpRef = useRef(false);
@@ -62,26 +64,32 @@ export function App() {
   // Dynamic Greeting state (contextual by time of day)
   const [greeting, setGreeting] = useState<string>(() => getGreetingForCurrentTime());
 
-  // Dark/Light Theme state
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('velocity-theme') as 'dark' | 'light') || 'dark';
+  // Dark/Light/OLED Theme state
+  const [theme, setTheme] = useState<'dark' | 'light' | 'oled'>(() => {
+    return (localStorage.getItem('velocity-theme') as 'dark' | 'light' | 'oled') || 'dark';
   });
 
   useEffect(() => {
     const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-      root.classList.remove('light');
-    } else {
+    if (theme === 'light') {
       root.classList.add('light');
       root.classList.remove('dark');
+    } else {
+      root.classList.add('dark');
+      root.classList.remove('light');
     }
     localStorage.setItem('velocity-theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
+  // Skills state for slash autocomplete
+  const [installedSkills, setInstalledSkills] = useState<Skill[]>([]);
+  const [isSlashOpen, setIsSlashOpen] = useState(false);
+  const [slashQuery, setSlashQuery] = useState('');
+  const [selectedSlashIdx, setSelectedSlashIdx] = useState(0);
+
+  useEffect(() => {
+    api.listSkills().then(setInstalledSkills).catch(() => {});
+  }, []);
 
   // Check URL query parameters on mount (e.g. redirected from Google OAuth callback)
   useEffect(() => {
@@ -103,43 +111,58 @@ export function App() {
     }
   }, []);
 
-  // Phase 5: Subscribe to real-time proactive events and timeline push
+  // Real-time proactive events stream with exponential backoff reconnect
   useEffect(() => {
     let eventSource: EventSource | null = null;
-    try {
-      eventSource = new EventSource('/api/stream/events');
-      eventSource.addEventListener('proactive_event', (e) => {
-        try {
-          const payload = JSON.parse(e.data);
-          const msg = payload.message;
-          if (msg && (payload.session_id === 'main' || payload.session_id === activeSession?.id)) {
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === msg.id)) return prev;
-              return [...prev, msg];
-            });
-            setTimeout(() => {
-              if (chatScrollRef.current) {
-                chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-              }
-            }, 100);
+    let reconnectTimeout: any = null;
+    let retryDelay = 1000;
+
+    const connectSSE = () => {
+      try {
+        eventSource = new EventSource('/api/stream/events');
+        eventSource.onopen = () => {
+          retryDelay = 1000;
+        };
+        eventSource.addEventListener('proactive_event', (e) => {
+          try {
+            const payload = JSON.parse(e.data);
+            const msg = payload.message;
+            if (msg && (payload.session_id === 'main' || payload.session_id === activeSession?.id)) {
+              setMessages((prev) => {
+                if (prev.some((m) => m.id === msg.id)) return prev;
+                return [...prev, msg];
+              });
+              setTimeout(() => {
+                if (chatScrollRef.current) {
+                  chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+                }
+              }, 100);
+            }
+          } catch (err) {
+            console.error('Failed to parse proactive event:', err);
           }
-        } catch (err) {
-          console.error('Failed to parse proactive event:', err);
-        }
-      });
-    } catch (err) {
-      console.error('Failed to connect to proactive event stream:', err);
-    }
+        });
+        eventSource.onerror = () => {
+          if (eventSource) eventSource.close();
+          retryDelay = Math.min(retryDelay * 2, 30000);
+          reconnectTimeout = setTimeout(connectSSE, retryDelay);
+        };
+      } catch (err) {
+        console.error('Failed to connect to proactive event stream:', err);
+        retryDelay = Math.min(retryDelay * 2, 30000);
+        reconnectTimeout = setTimeout(connectSSE, retryDelay);
+      }
+    };
+
+    connectSSE();
 
     return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
+      if (eventSource) eventSource.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
   }, [activeSession?.id]);
 
-
-  // Options Popover & Toggles
+  // Options Popover & Model Preferences
   const [isOptionsOpen, setIsOptionsOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<SupportedModel>(() => {
     return (localStorage.getItem('velocity-preferred-model') as SupportedModel) || 'gpt-5.4-mini';
@@ -154,7 +177,6 @@ export function App() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Scroll handler to track when user deliberately scrolls up away from bottom
   const handleScroll = useCallback(() => {
     if (!chatScrollRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = chatScrollRef.current;
@@ -164,7 +186,6 @@ export function App() {
     setIsUserScrolledUp(scrolledUp);
   }, []);
 
-  // Scroll to bottom helper with stable reference
   const scrollToBottom = useCallback((force: boolean = false) => {
     if (chatScrollRef.current) {
       if (!force && isUserScrolledUpRef.current) return;
@@ -175,7 +196,6 @@ export function App() {
     }
   }, []);
 
-  // Auto-scroll when new content arrives while streaming, unless user has scrolled up to read
   useEffect(() => {
     if (isStreaming && !isUserScrolledUpRef.current) {
       scrollToBottom();
@@ -188,9 +208,10 @@ export function App() {
     const target = sessionId || 'main';
     localStorage.setItem('velocity-active-session', target);
     setCurrentSessionId(target);
-    setIsTemporary(false);
     isUserScrolledUpRef.current = false;
     setIsUserScrolledUp(false);
+    setPendingProposal(null);
+    setPendingAction(null);
 
     if (target !== 'main') {
       try {
@@ -223,7 +244,7 @@ export function App() {
     }
   }, [isStreaming, scrollToBottom]);
 
-  // 1. Initial Load & Health Polling
+  // Initial Load & Health Polling
   useEffect(() => {
     let mounted = true;
 
@@ -251,48 +272,19 @@ export function App() {
       mounted = false;
       clearInterval(interval);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [handleSelectSession]);
 
-  // Conclude active side chat
-  const handleConcludeActiveThread = useCallback(async () => {
-    if (!activeThread) return;
-    try {
-      await api.triggerThreadRollup(activeThread.id, true);
-      setActiveThread((prev) => (prev ? { ...prev, status: 'concluded' } : null));
-    } catch (err) {
-      console.error('Failed to conclude side chat:', err);
+  // Frictionless Side Chat Exit: automatically trigger background rollup
+  const handleExitThread = useCallback(async () => {
+    if (activeThread) {
+      api.triggerThreadRollup(activeThread.id, false).catch((err) => {
+        console.error('Background rollup error:', err);
+      });
     }
-  }, [activeThread]);
+    handleSelectSession('main');
+  }, [activeThread, handleSelectSession]);
 
-  // Reopen active side chat
-  const handleReopenActiveThread = useCallback(async () => {
-    if (!activeThread) return;
-    try {
-      await api.updateThread(activeThread.id, { status: 'active' });
-      setActiveThread((prev) => (prev ? { ...prev, status: 'active' } : null));
-    } catch (err) {
-      console.error('Failed to reopen side chat:', err);
-    }
-  }, [activeThread]);
-
-  // Trigger rollup synthesis manually
-  const handleRollupActiveThread = useCallback(async () => {
-    if (!activeThread) return;
-    try {
-      await api.triggerThreadRollup(activeThread.id, false);
-    } catch (err) {
-      console.error('Failed to trigger rollup:', err);
-    }
-  }, [activeThread]);
-
-  // Toggle temporary scratch turn
-  const handleToggleTempChat = useCallback(() => {
-    if (isStreaming) return;
-    setIsTemporary((prev) => !prev);
-  }, [isStreaming]);
-
-  // Global keyboard shortcuts: Cmd+K (Search), Cmd+M (Memory Inspector), Esc (Dismiss)
+  // Global keyboard shortcuts: Cmd+K (Search), Cmd+M (Memory Vault), Esc (Dismiss)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMeta = e.metaKey || e.ctrlKey;
@@ -313,6 +305,7 @@ export function App() {
         setIsSearchOpen(false);
         setIsOptionsOpen(false);
         setIsMemoryInspectorOpen(false);
+        setIsSlashOpen(false);
         setActiveFlyout('none');
       }
     };
@@ -321,11 +314,10 @@ export function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Options Handlers (Sticky)
   const handleUpdateModel = async (newModel: SupportedModel) => {
     setSelectedModel(newModel);
     localStorage.setItem('velocity-preferred-model', newModel);
-    if (currentSessionId && !isTemporary) {
+    if (currentSessionId) {
       try {
         await api.updateSession(currentSessionId, { model: newModel });
       } catch (err) {
@@ -336,7 +328,7 @@ export function App() {
 
   const handleUpdateEffort = async (newEffort: ThinkingEffort) => {
     setThinkingEffort(newEffort);
-    if (currentSessionId && !isTemporary) {
+    if (currentSessionId) {
       try {
         await api.updateSession(currentSessionId, { thinking_effort: newEffort });
       } catch (err) {
@@ -347,7 +339,7 @@ export function App() {
 
   const handleUpdateRecall = async (newRecall: RecallBudget) => {
     setRecallBudget(newRecall);
-    if (currentSessionId && !isTemporary) {
+    if (currentSessionId) {
       try {
         await api.updateSession(currentSessionId, { recall_budget: newRecall });
       } catch (err) {
@@ -358,7 +350,7 @@ export function App() {
 
   const handleUpdateVerbosity = async (newVerbosity: Verbosity) => {
     setVerbosity(newVerbosity);
-    if (currentSessionId && !isTemporary) {
+    if (currentSessionId) {
       try {
         await api.updateSession(currentSessionId, { verbosity: newVerbosity });
       } catch (err) {
@@ -367,27 +359,56 @@ export function App() {
     }
   };
 
-  // Send message turn
-  const handleSendMessage = async (textToSend?: string) => {
-    const text = (textToSend || inputValue).trim();
-    if (!text || isStreaming) return;
+  // Slash commands list
+  const slashItems = [
+    { command: '/thread', label: '/thread [topic]', desc: 'Branch a dedicated engineering workspace' },
+    { command: '/briefing', label: '/briefing', desc: 'Synthesize proactive morning briefing' },
+    { command: '/reflection', label: '/reflection', desc: 'Synthesize evening reflection routine' },
+    ...installedSkills.map((sk) => ({
+      command: sk.slash_command || `/${sk.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+      label: sk.slash_command || `/${sk.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+      desc: sk.description,
+    })),
+  ].filter((item) => item.command.toLowerCase().includes(slashQuery.toLowerCase()));
 
-    const targetSessionId = currentSessionId || 'main';
+  // Send message turn with Atomic Delivery on main timeline
+  const handleSendMessage = async (textToSend?: string) => {
+    const rawText = (textToSend || inputValue).trim();
+    if (!rawText || isStreaming) return;
 
     setInputValue('');
+    setIsSlashOpen(false);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
     setIsOptionsOpen(false);
 
-    const userMsgId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `user-${Date.now()}`;
-    const asstMsgId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `asst-${Date.now()}`;
+    // Intercept /thread [topic] slash command
+    if (rawText.startsWith('/thread')) {
+      const topic = rawText.replace(/^\/thread\s*/, '').trim() || 'Engineering Investigation';
+      try {
+        const created = await api.createThread({
+          name: topic,
+          parent_session_id: 'main',
+        });
+        handleSelectSession(created.id);
+        return;
+      } catch (err) {
+        console.error('Failed to create thread:', err);
+      }
+    }
+
+    const targetSessionId = currentSessionId || 'main';
+    const isMainThread = targetSessionId === 'main';
+
+    const userMsgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `user-${Date.now()}`;
+    const asstMsgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `asst-${Date.now()}`;
 
     const userMsg: ChatMessage = {
       id: userMsgId,
       session_id: targetSessionId,
       role: 'user',
-      content: text,
+      content: rawText,
       created_at: new Date().toISOString(),
     };
 
@@ -397,7 +418,7 @@ export function App() {
       role: 'assistant',
       content: '',
       isStreaming: true,
-      statusText: 'Thinking',
+      statusText: isMainThread ? undefined : 'Thinking',
       reasoning: '',
       toolCalls: [],
       created_at: new Date().toISOString(),
@@ -416,92 +437,62 @@ export function App() {
       await api.streamChatTurn(
         {
           sessionId: targetSessionId,
-          message: text,
+          message: rawText,
           messageId: userMsgId,
           recallBudget,
           thinkingEffort,
           verbosity,
           model: selectedModel,
-          isTemporary,
         },
         {
           onStatus: (statusText) => {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === asstMsgId ? { ...m, statusText } : m))
-            );
+            if (!isMainThread) {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === asstMsgId ? { ...m, statusText } : m))
+              );
+            }
           },
           onAgenticStep: (step) => {
-            setMessages((prev) =>
-              prev.map((m) => (m.id === asstMsgId ? { ...m, agenticStep: step } : m))
-            );
+            if (!isMainThread) {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === asstMsgId ? { ...m, agenticStep: step } : m))
+              );
+            }
           },
           onReasoningDelta: (deltaText) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === asstMsgId
-                  ? { ...m, reasoning: (m.reasoning || '') + deltaText }
-                  : m
-              )
-            );
+            if (!isMainThread) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === asstMsgId
+                    ? { ...m, reasoning: (m.reasoning || '') + deltaText }
+                    : m
+                )
+              );
+            }
           },
           onThreadProposal: (proposal) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === asstMsgId ? { ...m, thread_proposal: proposal } : m
-              )
-            );
+            setPendingProposal({ messageId: asstMsgId, proposal });
           },
           onArtifactCreated: (art) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === asstMsgId ? { ...m, artifact: art, artifact_id: art.id } : m
-              )
-            );
-            setActiveArtifact((curr) => (curr && curr.id === art.id ? art : curr));
+            setActiveArtifact(art);
           },
           onActionProposal: (action) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === asstMsgId ? { ...m, staged_action: action } : m
-              )
-            );
-          },
-          onToolStart: (tool, query) => {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== asstMsgId) return m;
-                const existing = m.toolCalls || [];
-                return {
-                  ...m,
-                  toolCalls: [...existing, { tool, query, status: 'running' }],
-                };
-              })
-            );
-          },
-          onToolDone: (tool, result) => {
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id !== asstMsgId) return m;
-                const existing = m.toolCalls || [];
-                const updated = existing.map((tc) =>
-                  tc.tool === tool && tc.status === 'running'
-                    ? { ...tc, result, status: 'done' as const }
-                    : tc
-                );
-                return { ...m, toolCalls: updated };
-              })
-            );
+            setPendingAction(action);
           },
           onDelta: (deltaText) => {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === asstMsgId
-                  ? { ...m, content: m.content + deltaText }
-                  : m
-              )
-            );
+            if (!isMainThread) {
+              // Side chat: real-time live streaming
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === asstMsgId
+                    ? { ...m, content: m.content + deltaText }
+                    : m
+                )
+              );
+            }
           },
           onComplete: (data) => {
+            // Atomic delivery for main timeline: lands complete response all at once
             setMessages((prev) =>
               prev.map((m) => {
                 if (m.id === asstMsgId) {
@@ -527,8 +518,17 @@ export function App() {
                 return m;
               })
             );
+            if (data.thread_proposal && data.thread_proposal.status === 'pending') {
+              setPendingProposal({
+                messageId: data.assistant_message_id || asstMsgId,
+                proposal: data.thread_proposal,
+              });
+            }
+            if (data.staged_action && data.staged_action.status === 'pending') {
+              setPendingAction(data.staged_action);
+            }
             if (data.artifact) {
-              setActiveArtifact((curr) => (curr && curr.id === data.artifact?.id ? data.artifact : curr));
+              setActiveArtifact(data.artifact);
             }
             setIsStreaming(false);
           },
@@ -557,7 +557,6 @@ export function App() {
     }
   };
 
-  // Stop streaming
   const handleStopStreaming = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -569,63 +568,53 @@ export function App() {
     );
   };
 
-  // Handle user responding to a side chat proposal card
-  const handleRespondProposal = useCallback(async (messageId: string, action: 'accept' | 'decline') => {
+  // Floating Proposal Handlers
+  const handleAcceptProposal = useCallback(async (messageId: string) => {
     try {
-      const res = await api.respondToThreadProposal(messageId, action);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === messageId ? { ...m, thread_proposal: res.proposal } : m
-        )
-      );
-      if (action === 'accept' && res.thread) {
+      const res = await api.respondToThreadProposal(messageId, 'accept');
+      setPendingProposal(null);
+      if (res.thread) {
         handleSelectSession(res.thread.id);
-      } else if (action === 'decline') {
-        // Automatically continue generating directly in this timeline
-        handleSendMessage('Please continue and provide the complete solution directly here in this timeline.');
       }
     } catch (err) {
-      console.error('Failed to respond to proposal:', err);
+      console.error('Failed to accept proposal:', err);
     }
   }, [handleSelectSession]);
 
-  // Handle user confirming or declining a staged action (e.g. Gmail Send Email)
+  const handleDeclineProposal = useCallback(async (messageId: string) => {
+    try {
+      await api.respondToThreadProposal(messageId, 'decline');
+      setPendingProposal(null);
+      handleSendMessage('Please continue directly here in the main timeline.');
+    } catch (err) {
+      console.error('Failed to decline proposal:', err);
+    }
+  }, []);
+
+  // Floating Action Handlers (e.g. Gmail)
   const handleRespondAction = useCallback(async (actionId: string, decision: 'confirm' | 'decline') => {
     try {
-      const updated = await api.respondToStagedAction(actionId, decision);
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.staged_action && m.staged_action.id === actionId) {
-            return { ...m, staged_action: updated };
-          }
-          return m;
-        })
-      );
+      await api.respondToStagedAction(actionId, decision);
+      setPendingAction(null);
     } catch (err) {
       console.error('Failed to respond to staged action:', err);
     }
   }, []);
 
-
-  // Edit user prompt & resend
   const handleEditAndResend = async (messageId: string, newContent: string) => {
     if (!currentSessionId || isStreaming) return;
-
     const targetIdx = messages.findIndex((m) => m.id === messageId);
     if (targetIdx === -1) return;
 
     await api.truncateMessagesFrom(currentSessionId, messageId);
     const trimmed = messages.slice(0, targetIdx);
     setMessages(trimmed);
-
     setIsUserScrolledUp(false);
     handleSendMessage(newContent);
   };
 
-  // Regenerate assistant response
   const handleRegenerate = async (asstMessageId: string) => {
     if (!currentSessionId || isStreaming || messages.length === 0) return;
-
     const asstIdx = messages.findIndex((m) => m.id === asstMessageId);
     if (asstIdx === -1) return;
 
@@ -642,24 +631,128 @@ export function App() {
     await api.truncateMessagesFrom(currentSessionId, asstMessageId);
     const trimmed = messages.slice(0, asstIdx);
     setMessages(trimmed);
-
     setIsUserScrolledUp(false);
     handleSendMessage(userMsg.content);
   };
 
-  const isOptionsHighlighted =
-    selectedModel !== 'gpt-5.4-mini' ||
-    thinkingEffort !== 'medium' ||
-    recallBudget !== 'medium' ||
-    verbosity !== 'low';
+  const formatDateDivider = (timestamp?: string) => {
+    if (!timestamp) return '';
+    try {
+      const date = new Date(timestamp);
+      const now = new Date();
+      if (date.toDateString() === now.toDateString()) return 'Today';
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+      return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    } catch {
+      return '';
+    }
+  };
 
-  // Render input capsule
+  // Render input capsule with docked floating approval cards and slash command autocomplete
   const renderInputCapsule = (isCentered: boolean = false) => (
     <div
       className={`relative w-full ${
         isCentered ? 'max-w-2xl sm:max-w-3xl' : 'max-w-3xl'
       } flex flex-col items-center select-none`}
     >
+      {/* 1. Floating Approval Card for Side Chat Proposal */}
+      {pendingProposal && (
+        <div className="w-full mb-3 px-4 py-3 bg-[#18181b] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center flex-shrink-0">
+              <GitBranch className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-white truncate">
+                {pendingProposal.proposal.title}
+              </div>
+              <div className="text-xs text-neutral-400 truncate">
+                {pendingProposal.proposal.reason || 'Proposed Side Chat'}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => handleDeclineProposal(pendingProposal.messageId)}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            >
+              Continue Here
+            </button>
+            <button
+              type="button"
+              onClick={() => handleAcceptProposal(pendingProposal.messageId)}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-black hover:bg-neutral-200 transition-colors"
+            >
+              Approve
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 2. Floating Approval Card for Controlled Action (Gmail) */}
+      {pendingAction && (
+        <div className="w-full mb-3 px-4 py-3 bg-[#18181b] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center flex-shrink-0">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-semibold text-white truncate">
+                {pendingAction.action_type.replace(/_/g, ' ').toUpperCase()}: {pendingAction.parameters?.subject || pendingAction.parameters?.to || 'Action'}
+              </div>
+              <div className="text-xs text-neutral-400 truncate">Requires your approval to send</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => handleRespondAction(pendingAction.id, 'decline')}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            >
+              Decline
+            </button>
+            <button
+              type="button"
+              onClick={() => handleRespondAction(pendingAction.id, 'confirm')}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-black hover:bg-neutral-200 transition-colors"
+            >
+              Approve
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Slash Command Autocomplete Palette */}
+      {isSlashOpen && slashItems.length > 0 && (
+        <div className="absolute bottom-full left-0 mb-3 w-80 rounded-2xl bg-[#141416] p-2 shadow-2xl z-50 text-white select-none animate-in fade-in duration-150">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 px-3 py-1">
+            Skills & Commands
+          </div>
+          <div className="space-y-0.5">
+            {slashItems.map((item, idx) => (
+              <div
+                key={item.command}
+                onClick={() => {
+                  setInputValue(`${item.command} `);
+                  setIsSlashOpen(false);
+                  textareaRef.current?.focus();
+                }}
+                className={`p-2.5 rounded-xl cursor-pointer transition-colors ${
+                  idx === selectedSlashIdx ? 'bg-[#222227]' : 'hover:bg-[#1a1a1e]'
+                }`}
+              >
+                <div className="text-xs font-semibold text-white">{item.label}</div>
+                <div className="text-[11px] text-neutral-400 mt-0.5 truncate">{item.desc}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Options Menu Popover */}
       <OptionsMenu
         isOpen={isOptionsOpen}
         onClose={() => setIsOptionsOpen(false)}
@@ -673,18 +766,14 @@ export function App() {
         onUpdateVerbosity={handleUpdateVerbosity}
       />
 
-      {/* Input Capsule */}
-      <div className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-[26px] bg-[var(--bg-input)] shadow-2xl transition-all border border-zinc-800/60 focus-within:border-zinc-700">
+      {/* Flat Input Capsule - Strictly Zero Borders */}
+      <div className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-[26px] bg-[#141416] shadow-2xl transition-all">
         <button
           id="options-toggle-btn"
           type="button"
           onClick={() => setIsOptionsOpen(!isOptionsOpen)}
-          title="Configure Effort, Recall & Verbosity"
-          className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
-            isOptionsHighlighted
-              ? 'bg-[var(--bg-pill-hover)] text-[var(--text-primary)]'
-              : 'bg-[var(--bg-pill)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-pill-hover)]'
-          }`}
+          title="Configure Effort, Recall & Model"
+          className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-[#1e1e22] text-neutral-300 hover:text-white hover:bg-[#252528] transition-all"
         >
           <Plus
             className={`w-4 h-4 transition-transform duration-150 ${
@@ -697,11 +786,41 @@ export function App() {
           ref={textareaRef}
           value={inputValue}
           onChange={(e) => {
-            setInputValue(e.target.value);
+            const val = e.target.value;
+            setInputValue(val);
+            if (val.startsWith('/')) {
+              setSlashQuery(val.slice(1));
+              setIsSlashOpen(true);
+              setSelectedSlashIdx(0);
+            } else {
+              setIsSlashOpen(false);
+            }
             e.target.style.height = 'auto';
             e.target.style.height = `${Math.min(160, Math.max(24, e.target.scrollHeight))}px`;
           }}
           onKeyDown={(e) => {
+            if (isSlashOpen && slashItems.length > 0) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSelectedSlashIdx((prev) => (prev + 1) % slashItems.length);
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSelectedSlashIdx((prev) => (prev - 1 + slashItems.length) % slashItems.length);
+                return;
+              }
+              if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                e.preventDefault();
+                setInputValue(`${slashItems[selectedSlashIdx].command} `);
+                setIsSlashOpen(false);
+                return;
+              }
+              if (e.key === 'Escape') {
+                setIsSlashOpen(false);
+                return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               handleSendMessage();
@@ -709,15 +828,11 @@ export function App() {
           }}
           placeholder={
             activeThread
-              ? `Focus on ${activeThread.name}...`
-              : currentSessionId !== 'main' && activeSession
-              ? `Message in ${activeSession.name}...`
-              : isTemporary
-              ? 'Message in Temporary Scratch turn...'
+              ? `Message in ${activeThread.name}...`
               : 'Message Velocity...'
           }
           rows={1}
-          className="flex-1 bg-transparent text-[16px] sm:text-[16.5px] font-medium text-[var(--text-primary)] placeholder-[var(--text-dim)] outline-none resize-none py-1.5 px-1 leading-snug max-h-40"
+          className="flex-1 bg-transparent text-[15.5px] font-medium text-white placeholder-neutral-500 outline-none resize-none py-1.5 px-1 leading-snug max-h-40 border-none"
         />
 
         {isStreaming ? (
@@ -725,7 +840,7 @@ export function App() {
             type="button"
             onClick={handleStopStreaming}
             title="Stop generating"
-            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-[var(--text-primary)] text-[var(--bg-primary)] hover:opacity-90 transition-opacity"
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-white text-black hover:opacity-90 transition-opacity"
           >
             <Square className="w-3.5 h-3.5 fill-current" />
           </button>
@@ -737,8 +852,8 @@ export function App() {
             title="Send message"
             className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
               inputValue.trim()
-                ? 'bg-[var(--text-primary)] text-[var(--bg-primary)] hover:opacity-90'
-                : 'bg-[var(--bg-pill)] text-[var(--text-dim)] cursor-not-allowed'
+                ? 'bg-white text-black hover:opacity-90'
+                : 'bg-[#1e1e22] text-neutral-600 cursor-not-allowed'
             }`}
           >
             <ArrowUp className="w-4 h-4" />
@@ -749,158 +864,74 @@ export function App() {
   );
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans">
-      {/* 1. WhatsApp-Style Navigation Rail with Sliding Flyouts */}
+    <div className="flex h-screen w-screen overflow-hidden bg-[#000000] text-white font-sans">
+      {/* 1. Centered 5-Icon Navigation Rail */}
       <NavigationRail
         currentSessionId={currentSessionId}
         activeFlyout={activeFlyout}
         onSelectFlyout={setActiveFlyout}
         onSelectSession={handleSelectSession}
-        onOpenMemoryInspector={() => setIsMemoryInspectorOpen(true)}
+        onOpenMemoryInspector={() => {
+          setSettingsTab('memory');
+          setIsSettingsOpen(true);
+        }}
         onOpenSettings={() => {
-          setSettingsTab('plugins');
+          setSettingsTab('general');
           setIsSettingsOpen(true);
         }}
         theme={theme}
-        onToggleTheme={toggleTheme}
+        onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
         isBackendOnline={isBackendOnline}
         healthDetails={healthDetails}
       />
 
-      {/* 2. Main Work Area (Lifelong Timeline or Full-screen Side Chat) */}
-      <main className="flex-1 flex flex-col h-full min-w-0 relative bg-[var(--bg-primary)]">
-        {/* Top Header */}
-        <header className="relative z-20 h-13 border-b border-zinc-800/80 bg-[#000000]/80 backdrop-blur-md flex items-center justify-between px-6 flex-shrink-0 select-none">
+      {/* 2. Main Timeline / Side Chat Area */}
+      <main className="flex-1 flex flex-col h-full min-w-0 relative bg-[#000000]">
+        {/* Top Header - Bolder Centered Velocity Logo & Frictionless Thread Navigation */}
+        <header className="relative z-20 h-14 bg-[#000000] flex items-center justify-between px-6 flex-shrink-0 select-none">
           {activeThread ? (
-            /* Side Chat (Thread) Dedicated Full-Screen Top Bar */
+            /* Side Chat Top Bar */
             <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleSelectSession('main')}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Main Timeline</span>
-                </button>
-                <div className="w-[1px] h-4 bg-zinc-800" />
-                <div className="flex items-center gap-2">
-                  <GitBranch className="w-4 h-4 text-sky-400" />
-                  <h2 className="text-sm font-semibold text-zinc-100 truncate max-w-[280px] sm:max-w-md">
-                    {activeThread.name}
-                  </h2>
-                  <span
-                    className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border ${
-                      activeThread.status === 'active'
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                    }`}
-                  >
-                    {activeThread.status}
-                  </span>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={handleExitThread}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-[#141416] transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Main Timeline</span>
+              </button>
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleRollupActiveThread}
-                  title="Synthesize updated rollup summary"
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 text-xs font-medium transition-colors"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Rollup</span>
-                </button>
+                <GitBranch className="w-4 h-4 text-sky-400" />
+                <h2 className="text-sm font-semibold text-white truncate max-w-[280px] sm:max-w-md">
+                  {activeThread.name}
+                </h2>
+              </div>
 
-                {activeThread.status === 'active' ? (
-                  <button
-                    type="button"
-                    onClick={handleConcludeActiveThread}
-                    title="Conclude side chat and generate rollup summary"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Conclude</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleReopenActiveThread}
-                    title="Reopen side chat"
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs font-medium transition-colors"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5 text-sky-400" />
-                    <span>Reopen</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : currentSessionId && currentSessionId !== 'main' ? (
-            /* Legacy / Past Session Dedicated Top Bar */
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleSelectSession('main')}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Main Timeline</span>
-                </button>
-                <div className="w-[1px] h-4 bg-zinc-800" />
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-zinc-400" />
-                  <h2 className="text-sm font-semibold text-zinc-100 truncate max-w-[280px] sm:max-w-md">
-                    {activeSession?.name || 'Past Session'}
-                  </h2>
-                  <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border bg-zinc-800 text-zinc-400 border-zinc-700">
-                    past session
-                  </span>
-                </div>
-              </div>
+              <div className="w-24" />
             </div>
           ) : (
-            /* Main Continuous Timeline Top Bar */
-            <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-2.5">
-                <span className="text-sm font-bold tracking-tight text-zinc-100">Velocity</span>
-                <span className="text-[11px] font-medium text-zinc-500 hidden sm:inline">
-                  Direct, sharp engineering peer
-                </span>
-              </div>
-
+            /* Main Continuous Timeline Top Bar - Bolder Logo Centered */
+            <div className="flex items-center justify-center w-full relative">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleToggleTempChat}
-                  title={
-                    isTemporary
-                      ? 'Temporary Scratch Turn Active (Click to disable)'
-                      : 'Enable Temporary Scratch Turn'
-                  }
-                  className={`p-2 rounded-xl transition-all ${
-                    isTemporary
-                      ? 'bg-[var(--bg-pill)] text-[var(--text-primary)] shadow-sm'
-                      : 'text-[var(--text-dim)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
-                  }`}
-                >
-                  <Ghost className="w-4 h-4" />
-                </button>
+                <span className="text-base sm:text-lg font-black tracking-tight text-white uppercase">
+                  Velocity
+                </span>
               </div>
             </div>
           )}
         </header>
 
-        {/* 3. Centered Empty State vs. Continuous Conversation View */}
+        {/* Conversation Stream vs. Centered Empty State */}
         {messages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-8 select-none">
             <div className="w-full max-w-2xl sm:max-w-3xl flex flex-col items-center -translate-y-8">
               <h1
                 onClick={() => setGreeting((prev) => getGreetingForCurrentTime(prev))}
                 title="Click to shuffle greeting"
-                className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-8 text-center font-sans cursor-pointer hover:opacity-80 active:scale-[0.99] transition-all"
+                className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-8 text-center font-sans cursor-pointer hover:opacity-80 active:scale-[0.99] transition-all"
               >
-                {activeThread ? activeThread.name : (currentSessionId !== 'main' && activeSession ? activeSession.name : greeting)}
+                {activeThread ? activeThread.name : greeting}
               </h1>
               {renderInputCapsule(true)}
             </div>
@@ -913,21 +944,34 @@ export function App() {
               className="flex-1 overflow-y-auto px-4 sm:px-8 py-6 flex flex-col justify-start"
             >
               <div className="w-full max-w-3xl mx-auto flex flex-col flex-1">
-                {messages.map((msg) => (
-                  <ChatMessageView
-                    key={msg.id}
-                    message={msg}
-                    onEditAndResend={handleEditAndResend}
-                    onRegenerate={handleRegenerate}
-                    onOpenThread={(threadId) => handleSelectSession(threadId)}
-                    onRespondProposal={handleRespondProposal}
-                    onOpenArtifact={(art) => {
-                      setActiveArtifact(art);
-                      setIsCanvasOpen(true);
-                    }}
-                    onRespondAction={handleRespondAction}
-                  />
-                ))}
+                {messages.map((msg, idx) => {
+                  const prevMsg = idx > 0 ? messages[idx - 1] : null;
+                  const isNewDay = !prevMsg || new Date(msg.created_at).toDateString() !== new Date(prevMsg.created_at).toDateString();
+                  return (
+                    <div key={msg.id} className="w-full flex flex-col">
+                      {isNewDay && (
+                        <div className="w-full flex items-center justify-center my-4 select-none">
+                          <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
+                            {formatDateDivider(msg.created_at)}
+                          </span>
+                        </div>
+                      )}
+                      <ChatMessageView
+                        message={msg}
+                        isThread={currentSessionId !== 'main'}
+                        onEditAndResend={handleEditAndResend}
+                        onRegenerate={handleRegenerate}
+                        onOpenThread={(threadId) => handleSelectSession(threadId)}
+                        onOpenArtifact={(art) => {
+                          setActiveArtifact(art);
+                          setIsCanvasOpen(true);
+                        }}
+                        onRespondProposal={handleAcceptProposal}
+                        onRespondAction={handleRespondAction}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -942,7 +986,7 @@ export function App() {
                     scrollToBottom(true);
                   }}
                   title="Scroll to bottom"
-                  className="w-9 h-9 rounded-full flex items-center justify-center bg-[var(--bg-pill)] hover:bg-[var(--bg-pill-hover)] text-[var(--text-primary)] shadow-xl backdrop-blur-md transition-all cursor-pointer select-none active:scale-95"
+                  className="w-9 h-9 rounded-full flex items-center justify-center bg-[#1e1e22] hover:bg-[#252528] text-white shadow-xl transition-all cursor-pointer select-none active:scale-95"
                 >
                   <ArrowDown className="w-4 h-4" />
                 </button>
@@ -957,7 +1001,7 @@ export function App() {
         )}
       </main>
 
-      {/* 3. Artifact Canvas Side-by-Side Panel (Split View) */}
+      {/* 3. Artifact Canvas Side-by-Side Panel */}
       <ArtifactCanvas
         artifact={activeArtifact}
         isOpen={isCanvasOpen}
@@ -981,7 +1025,7 @@ export function App() {
         isBackendOnline={isBackendOnline}
       />
 
-      {/* Settings Modal (Plugins & General) */}
+      {/* Claude-Style Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => {
@@ -991,17 +1035,15 @@ export function App() {
         initialTab={settingsTab}
         initialError={settingsError}
         currentModel={selectedModel}
-        onSelectModel={(m) => {
-          setSelectedModel(m);
-          localStorage.setItem('velocity-preferred-model', m);
-        }}
+        onSelectModel={handleUpdateModel}
         currentEffort={thinkingEffort}
-        onSelectEffort={setThinkingEffort}
+        onSelectEffort={handleUpdateEffort}
         currentVerbosity={verbosity}
-        onSelectVerbosity={setVerbosity}
+        onSelectVerbosity={handleUpdateVerbosity}
         currentRecallBudget={recallBudget}
-        onSelectRecallBudget={setRecallBudget}
-        onOpenMemoryInspector={() => setIsMemoryInspectorOpen(true)}
+        onSelectRecallBudget={handleUpdateRecall}
+        theme={theme}
+        onSelectTheme={setTheme}
       />
     </div>
   );

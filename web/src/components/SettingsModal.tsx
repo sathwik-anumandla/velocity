@@ -6,21 +6,25 @@ import {
   Puzzle,
   Brain,
   Check,
-  Calendar,
-  CheckSquare,
-  Mail,
   ExternalLink,
-  Loader2,
   AlertCircle,
   Unplug,
   Clock,
   Sparkles,
   Plus,
   Trash2,
-  Play,
   Pause,
+  Play,
   Edit3,
+  Search,
+  Save,
+  FileText,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type {
   SupportedModel,
   ThinkingEffort,
@@ -31,6 +35,7 @@ import type {
   Skill,
 } from '../types';
 import * as api from '../api';
+import type { VaultTreeItem } from '../api';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -45,13 +50,15 @@ interface SettingsModalProps {
   onSelectVerbosity: (verbosity: Verbosity) => void;
   currentRecallBudget: RecallBudget;
   onSelectRecallBudget: (budget: RecallBudget) => void;
-  onOpenMemoryInspector: () => void;
+  onOpenMemoryInspector?: () => void;
+  theme?: 'dark' | 'light' | 'oled';
+  onSelectTheme?: (theme: 'dark' | 'light' | 'oled') => void;
 }
 
 export const SettingsModal: FC<SettingsModalProps> = ({
   isOpen,
   onClose,
-  initialTab = 'plugins',
+  initialTab = 'general',
   initialError = null,
   currentModel,
   onSelectModel,
@@ -61,18 +68,20 @@ export const SettingsModal: FC<SettingsModalProps> = ({
   onSelectVerbosity,
   currentRecallBudget,
   onSelectRecallBudget,
-  onOpenMemoryInspector,
+  theme = 'dark',
+  onSelectTheme,
 }) => {
   const [activeTab, setActiveTab] = useState<'general' | 'plugins' | 'memory' | 'schedules' | 'skills'>(initialTab);
+  const [searchFilter, setSearchFilter] = useState('');
+
+  // Plugins state
   const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null);
-  const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(initialError);
 
-  // Phase 5: Schedules state
+  // Schedules state
   const [schedules, setSchedules] = useState<ScheduledEvent[]>([]);
-  const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
   const [isCreatingSchedule, setIsCreatingSchedule] = useState(false);
   const [newScheduleName, setNewScheduleName] = useState('');
   const [newScheduleType, setNewScheduleType] = useState<'recurring' | 'one_shot'>('recurring');
@@ -84,23 +93,29 @@ export const SettingsModal: FC<SettingsModalProps> = ({
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
 
-  // Phase 5: Skills state
+  // Skills state
   const [skills, setSkills] = useState<Skill[]>([]);
-  const [isLoadingSkills, setIsLoadingSkills] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [skillInstructionsDraft, setSkillInstructionsDraft] = useState('');
   const [isSavingSkill, setIsSavingSkill] = useState(false);
 
-  // Sync initialTab when modal opens
+  // Memory Vault state
+  const [vaultTree, setVaultTree] = useState<VaultTreeItem[]>([]);
+  const [selectedVaultPath, setSelectedVaultPath] = useState<string>('core/profile.md');
+  const [vaultDocContent, setVaultDocContent] = useState<string>('');
+  const [isEditingVaultDoc, setIsEditingVaultDoc] = useState(false);
+  const [vaultDocEditDraft, setVaultDocEditDraft] = useState('');
+  const [isLoadingVault, setIsLoadingVault] = useState(false);
+  const [isSavingVault, setIsSavingVault] = useState(false);
+
   useEffect(() => {
     if (isOpen) {
       setActiveTab(initialTab);
-      if (initialError) {
-        setAuthError(initialError);
-      }
+      if (initialError) setAuthError(initialError);
       if (initialTab === 'plugins') loadIntegrationStatus();
       if (initialTab === 'schedules') loadSchedules();
       if (initialTab === 'skills') loadSkills();
+      if (initialTab === 'memory') loadVault();
     }
   }, [isOpen, initialTab, initialError]);
 
@@ -109,42 +124,16 @@ export const SettingsModal: FC<SettingsModalProps> = ({
     if (activeTab === 'plugins') loadIntegrationStatus();
     if (activeTab === 'schedules') loadSchedules();
     if (activeTab === 'skills') loadSkills();
+    if (activeTab === 'memory') loadVault();
   }, [activeTab, isOpen]);
 
   const loadIntegrationStatus = async () => {
-    setIsLoadingStatus(true);
     setAuthError(null);
     try {
       const status = await api.getIntegrationStatus();
       setIntegrationStatus(status);
     } catch (e: any) {
       console.error('Failed to load integration status:', e);
-    } finally {
-      setIsLoadingStatus(false);
-    }
-  };
-
-  const loadSchedules = async () => {
-    setIsLoadingSchedules(true);
-    try {
-      const data = await api.listSchedules();
-      setSchedules(data);
-    } catch (err: any) {
-      console.error('Failed to load schedules:', err);
-    } finally {
-      setIsLoadingSchedules(false);
-    }
-  };
-
-  const loadSkills = async () => {
-    setIsLoadingSkills(true);
-    try {
-      const data = await api.listSkills();
-      setSkills(data);
-    } catch (err: any) {
-      console.error('Failed to load skills:', err);
-    } finally {
-      setIsLoadingSkills(false);
     }
   };
 
@@ -153,11 +142,9 @@ export const SettingsModal: FC<SettingsModalProps> = ({
     setAuthError(null);
     try {
       const { url } = await api.getGoogleAuthUrl();
-      if (url) {
-        window.location.href = url;
-      }
-    } catch (err: any) {
-      setAuthError(err.message || 'Failed to initiate Google OAuth flow.');
+      window.location.href = url;
+    } catch (e: any) {
+      setAuthError(e.message || 'Failed to initiate Google authorization');
       setIsConnecting(false);
     }
   };
@@ -168,16 +155,25 @@ export const SettingsModal: FC<SettingsModalProps> = ({
     try {
       await api.disconnectGoogle();
       await loadIntegrationStatus();
-    } catch (err: any) {
-      setAuthError(err.message || 'Failed to disconnect Google account.');
+    } catch (e: any) {
+      setAuthError(e.message || 'Failed to disconnect Google account');
     } finally {
       setIsDisconnecting(false);
     }
   };
 
-  const handleToggleSchedule = async (sched: ScheduledEvent) => {
-    const nextStatus = sched.status === 'active' ? 'paused' : 'active';
+  const loadSchedules = async () => {
     try {
+      const list = await api.listSchedules();
+      setSchedules(list);
+    } catch (e) {
+      console.error('Failed to load schedules:', e);
+    }
+  };
+
+  const handleToggleSchedule = async (sched: ScheduledEvent) => {
+    try {
+      const nextStatus = sched.status === 'active' ? 'paused' : 'active';
       await api.updateSchedule(sched.id, { status: nextStatus });
       await loadSchedules();
     } catch (err) {
@@ -185,65 +181,28 @@ export const SettingsModal: FC<SettingsModalProps> = ({
     }
   };
 
-  const handleDeleteSchedule = async (schedId: string) => {
+  const handleDeleteSchedule = async (scheduleId: string) => {
     try {
-      await api.deleteSchedule(schedId);
+      await api.deleteSchedule(scheduleId);
       await loadSchedules();
     } catch (err) {
       console.error('Failed to delete schedule:', err);
     }
   };
 
-  const formatScheduleTiming = (sched: ScheduledEvent): string => {
-    if (sched.event_type === 'recurring' && sched.cron_expression) {
-      const parts = sched.cron_expression.trim().split(/\s+/);
-      if (parts.length >= 5) {
-        const [minute, hour, dom, mon, dow] = parts;
-        const h = parseInt(hour, 10);
-        const m = parseInt(minute, 10);
-        if (!isNaN(h) && !isNaN(m)) {
-          const ampm = h >= 12 ? 'PM' : 'AM';
-          const displayH = h % 12 === 0 ? 12 : h % 12;
-          const displayM = m < 10 ? `0${m}` : `${m}`;
-          const timeStr = `${displayH}:${displayM} ${ampm}`;
-
-          if (dow === '1-5') return `Weekdays at ${timeStr}`;
-          if (dow === '6,0' || dow === '0,6') return `Weekends at ${timeStr}`;
-          if (dom === '*' && mon === '*' && dow === '*') return `Every day at ${timeStr}`;
-          return `At ${timeStr}`;
-        }
-      }
-      return sched.cron_expression;
+  const handleCreateSchedule = async () => {
+    if (!newScheduleName.trim()) {
+      setScheduleError('Please provide a name for this routine.');
+      return;
     }
-
-    if (sched.event_type === 'one_shot') {
-      const target = sched.run_at || sched.next_run_at;
-      if (target) {
-        try {
-          const d = new Date(target);
-          return `One-shot: ${d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} at ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
-        } catch {
-          return 'One-Shot';
-        }
-      }
-      return 'One-Shot';
-    }
-
-    return 'Scheduled';
-  };
-
-  const handleCreateScheduleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newScheduleName.trim() || !newSchedulePrompt.trim()) {
-      setScheduleError('Name and prompt directive are required.');
+    if (!newSchedulePrompt.trim() && !newScheduleSkillId) {
+      setScheduleError('Please provide prompt instructions or select a skill.');
       return;
     }
 
     let cronExpr: string | undefined = undefined;
     if (newScheduleType === 'recurring') {
-      const [hStr, mStr] = (newScheduleTime || '08:00').split(':');
-      const h = parseInt(hStr, 10) || 0;
-      const m = parseInt(mStr, 10) || 0;
+      const [h, m] = newScheduleTime.split(':').map((s) => s.trim());
       if (newScheduleFrequency === 'weekdays') {
         cronExpr = `${m} ${h} * * 1-5`;
       } else if (newScheduleFrequency === 'weekends') {
@@ -294,6 +253,15 @@ export const SettingsModal: FC<SettingsModalProps> = ({
     }
   };
 
+  const loadSkills = async () => {
+    try {
+      const list = await api.listSkills();
+      setSkills(list);
+    } catch (e) {
+      console.error('Failed to load skills:', e);
+    }
+  };
+
   const handleToggleSkill = async (skill: Skill) => {
     try {
       await api.updateSkill(skill.id, { enabled: !skill.enabled });
@@ -322,413 +290,626 @@ export const SettingsModal: FC<SettingsModalProps> = ({
     }
   };
 
+  const loadVault = async () => {
+    setIsLoadingVault(true);
+    try {
+      const tree = await api.getVaultTree();
+      setVaultTree(tree);
+      const defaultPath = tree.find((t) => t.path === 'core/profile.md') ? 'core/profile.md' : tree[0]?.path;
+      if (defaultPath) {
+        setSelectedVaultPath(defaultPath);
+        const doc = await api.getVaultDoc(defaultPath);
+        setVaultDocContent(doc);
+      }
+    } catch (e) {
+      console.error('Failed to load memory vault:', e);
+    } finally {
+      setIsLoadingVault(false);
+    }
+  };
+
+  const handleSelectVaultDoc = async (path: string) => {
+    setSelectedVaultPath(path);
+    setIsEditingVaultDoc(false);
+    setIsLoadingVault(true);
+    try {
+      const content = await api.getVaultDoc(path);
+      setVaultDocContent(content);
+    } catch (e) {
+      console.error('Failed to load doc:', e);
+    } finally {
+      setIsLoadingVault(false);
+    }
+  };
+
+  const handleSaveVaultDoc = async () => {
+    if (!selectedVaultPath) return;
+    setIsSavingVault(true);
+    try {
+      await api.saveVaultDoc(selectedVaultPath, vaultDocEditDraft);
+      setVaultDocContent(vaultDocEditDraft);
+      setIsEditingVaultDoc(false);
+    } catch (e) {
+      console.error('Failed to save doc:', e);
+    } finally {
+      setIsSavingVault(false);
+    }
+  };
+
   if (!isOpen) return null;
+
+  const navCategories = [
+    {
+      group: 'Settings',
+      items: [
+        { id: 'general', label: 'General', icon: Sliders },
+        { id: 'memory', label: 'Memory', icon: Brain },
+      ],
+    },
+    {
+      group: 'Capabilities',
+      items: [
+        { id: 'plugins', label: 'Plugins', icon: Puzzle },
+        { id: 'schedules', label: 'Schedules', icon: Clock },
+      ],
+    },
+    {
+      group: 'Customize',
+      items: [
+        { id: 'skills', label: 'Skills', icon: Sparkles },
+      ],
+    },
+  ];
+
+  const filteredCategories = navCategories
+    .map((cat) => ({
+      ...cat,
+      items: cat.items.filter((item) =>
+        item.label.toLowerCase().includes(searchFilter.toLowerCase())
+      ),
+    }))
+    .filter((cat) => cat.items.length > 0);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl rounded-2xl bg-[#09090b] border border-zinc-800 text-zinc-100 shadow-2xl flex flex-col overflow-hidden max-h-[88vh]"
+        className="w-full max-w-4xl h-[660px] max-h-[90vh] rounded-2xl bg-[#141416] text-neutral-100 shadow-2xl flex overflow-hidden select-none"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-[#0c0c0e]">
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-base font-semibold text-zinc-100">Settings</h2>
+        {/* Left Navigation Pane (Matching settings-layout.png) */}
+        <aside className="w-64 bg-[#0d0d0f] p-4 flex flex-col shrink-0">
+          {/* Top Search Input */}
+          <div className="relative mb-3">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-neutral-500" />
+            <input
+              type="text"
+              placeholder="Search..."
+              value={searchFilter}
+              onChange={(e) => setSearchFilter(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-[#18181b] rounded-xl text-xs text-white placeholder-neutral-500 border-none outline-none"
+            />
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center px-6 border-b border-zinc-800 bg-[#09090b] text-sm overflow-x-auto no-scrollbar">
-          <button
-            type="button"
-            onClick={() => setActiveTab('plugins')}
-            className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'plugins'
-                ? 'border-zinc-100 text-zinc-100'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Puzzle className="w-4 h-4" />
-            Plugins
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('schedules')}
-            className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'schedules'
-                ? 'border-zinc-100 text-zinc-100'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            Schedules
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('skills')}
-            className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'skills'
-                ? 'border-zinc-100 text-zinc-100'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            Skills
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('general')}
-            className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'general'
-                ? 'border-zinc-100 text-zinc-100'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Sliders className="w-4 h-4" />
-            General
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab('memory')}
-            className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 whitespace-nowrap transition-colors ${
-              activeTab === 'memory'
-                ? 'border-zinc-100 text-zinc-100'
-                : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <Brain className="w-4 h-4" />
-            Memory Vault
-          </button>
-        </div>
-
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* TAB 1: PLUGINS */}
-          {activeTab === 'plugins' && (
-            <div className="space-y-6">
-              {authError && (
-                <div className="p-3.5 rounded-xl border border-red-500/30 bg-red-950/20 text-red-200 text-xs flex items-start gap-2.5">
-                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                  <div className="leading-relaxed">{authError}</div>
+          {/* Navigation Categories */}
+          <div className="flex-1 overflow-y-auto space-y-4 pt-1">
+            {filteredCategories.map((cat) => (
+              <div key={cat.group}>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 px-3 mb-1">
+                  {cat.group}
                 </div>
-              )}
+                <div className="space-y-0.5">
+                  {cat.items.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setActiveTab(item.id as any)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left ${
+                          isActive
+                            ? 'bg-[#222227] text-white shadow-sm'
+                            : 'text-neutral-400 hover:text-white hover:bg-[#18181b]'
+                        }`}
+                      >
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-neutral-500'}`} />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
 
-              {/* Google Workspace Card */}
-              <div className="p-5 rounded-2xl border border-zinc-800 bg-[#0c0c0e] space-y-4">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-zinc-100 text-sm">Google Workspace</span>
-                      {integrationStatus?.google_connected ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-950/40 text-emerald-400 border border-emerald-800/40">
-                          <Check className="w-3 h-3" /> Connected
-                        </span>
+        {/* Right Content Area */}
+        <main className="flex-1 bg-[#141416] p-6 overflow-y-auto flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-5 mb-5 shrink-0">
+            <div>
+              <h2 className="text-lg font-semibold text-white capitalize">
+                {activeTab === 'general'
+                  ? 'General Settings'
+                  : activeTab === 'memory'
+                  ? 'Memory Vault & Cognitive Models'
+                  : activeTab === 'plugins'
+                  ? 'Plugin Integrations'
+                  : activeTab === 'schedules'
+                  ? 'Proactive Routines & Schedules'
+                  : 'Installed Skills'}
+              </h2>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-xl text-neutral-400 hover:text-white hover:bg-[#1f1f23] transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Body Content */}
+          <div className="flex-1 overflow-y-auto space-y-6 pr-1">
+            {/* 1. GENERAL TAB */}
+            {activeTab === 'general' && (
+              <div className="space-y-6 text-xs">
+                {/* Theme Selector */}
+                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                  <div>
+                    <div className="font-semibold text-white text-sm">Appearance & Theme</div>
+                    <p className="text-neutral-400 mt-0.5">Select visual theme preference.</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    {(['dark', 'light', 'oled'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => onSelectTheme?.(t)}
+                        className={`p-3 rounded-xl flex items-center justify-center gap-2 transition-all font-medium capitalize ${
+                          theme === t
+                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
+                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {t === 'light' ? (
+                          <Sun className="w-4 h-4 text-amber-400" />
+                        ) : t === 'oled' ? (
+                          <Monitor className="w-4 h-4 text-sky-400" />
+                        ) : (
+                          <Moon className="w-4 h-4 text-indigo-400" />
+                        )}
+                        <span>{t === 'oled' ? 'OLED Pitch Black' : t}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Primary Model */}
+                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                  <div>
+                    <div className="font-semibold text-white text-sm">Primary Inference Model</div>
+                    <p className="text-neutral-400 mt-0.5">High-speed vs. deep architecture reasoning model.</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    {[
+                      { id: 'gpt-5.4-mini', name: 'GPT-5.4 Mini', desc: 'Fast, lightweight daily driver' },
+                      { id: 'gpt-5.4', name: 'GPT-5.4 Flagship', desc: 'Deep architectural intelligence' },
+                    ].map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => onSelectModel(m.id as SupportedModel)}
+                        className={`p-3 rounded-xl text-left transition-all ${
+                          currentModel === m.id
+                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
+                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-medium text-white text-xs">{m.name}</div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5">{m.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Thinking Effort */}
+                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                  <div>
+                    <div className="font-semibold text-white text-sm">Thinking Effort</div>
+                    <p className="text-neutral-400 mt-0.5">Depth of reasoning applied before generating response turns.</p>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5 pt-1">
+                    {(['none', 'low', 'medium', 'high', 'max'] as const).map((effort) => (
+                      <button
+                        key={effort}
+                        type="button"
+                        onClick={() => onSelectEffort(effort)}
+                        className={`py-2 px-3 rounded-xl text-center capitalize transition-all font-medium ${
+                          currentEffort === effort
+                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
+                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {effort}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Response Verbosity */}
+                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                  <div>
+                    <div className="font-semibold text-white text-sm">Response Verbosity</div>
+                    <p className="text-neutral-400 mt-0.5">Control paragraph length and response density.</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    {[
+                      { id: 'low', name: 'Concise', desc: 'Direct, sharp peer answers' },
+                      { id: 'medium', name: 'Balanced', desc: 'Standard explanation depth' },
+                      { id: 'high', name: 'Comprehensive', desc: 'Exhaustive edge-case detail' },
+                    ].map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => onSelectVerbosity(v.id as Verbosity)}
+                        className={`p-3 rounded-xl text-left transition-all ${
+                          currentVerbosity === v.id
+                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
+                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-medium text-white">{v.name}</div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5">{v.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Memory Recall Budget */}
+                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                  <div>
+                    <div className="font-semibold text-white text-sm">Memory Recall Budget</div>
+                    <p className="text-neutral-400 mt-0.5">Depth of Hindsight memory search per conversational turn.</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-1">
+                    {[
+                      { id: 'low', name: 'Low', desc: 'Immediate context priority' },
+                      { id: 'medium', name: 'Medium', desc: 'Balanced episodic recall' },
+                      { id: 'high', name: 'High', desc: 'Deep multi-session recall' },
+                    ].map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => onSelectRecallBudget(b.id as RecallBudget)}
+                        className={`p-3 rounded-xl text-left transition-all ${
+                          currentRecallBudget === b.id
+                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
+                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-medium text-white">{b.name}</div>
+                        <div className="text-[11px] text-neutral-500 mt-0.5">{b.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 2. MEMORY TAB */}
+            {activeTab === 'memory' && (
+              <div className="flex h-full gap-4 text-xs">
+                {/* Vault Tree Sidebar */}
+                <div className="w-56 bg-[#0d0d0f] rounded-2xl p-3 flex flex-col shrink-0">
+                  <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider px-2 mb-2">
+                    Vault Documents
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-1">
+                    {vaultTree.map((item) => (
+                      <button
+                        key={item.path}
+                        type="button"
+                        onClick={() => handleSelectVaultDoc(item.path)}
+                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left transition-all truncate ${
+                          selectedVaultPath === item.path
+                            ? 'bg-[#222227] text-white font-medium'
+                            : 'text-neutral-400 hover:text-white hover:bg-[#18181b]'
+                        }`}
+                      >
+                        <FileText className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                        <span className="truncate">{item.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Vault Document Content Viewer / Editor */}
+                <div className="flex-1 bg-[#0d0d0f] rounded-2xl p-4 flex flex-col min-w-0">
+                  <div className="flex items-center justify-between pb-3 mb-3 shrink-0">
+                    <span className="font-mono text-neutral-300 text-xs truncate">
+                      {selectedVaultPath}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isEditingVaultDoc ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingVaultDoc(false)}
+                            className="px-2.5 py-1 text-neutral-400 hover:text-white rounded-lg"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveVaultDoc}
+                            disabled={isSavingVault}
+                            className="flex items-center gap-1 px-3 py-1 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition-colors"
+                          >
+                            <Save className="w-3.5 h-3.5" />
+                            <span>Save</span>
+                          </button>
+                        </>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-zinc-800 text-zinc-400 border border-zinc-700/50">
-                          Not Connected
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setVaultDocEditDraft(vaultDocContent);
+                            setIsEditingVaultDoc(true);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 text-neutral-400 hover:text-white bg-[#18181b] rounded-lg transition-colors"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Edit</span>
+                        </button>
                       )}
                     </div>
-                    <p className="text-xs text-zinc-400">
-                      Connect Google Calendar, Tasks, and Gmail for seamless scheduling and communications.
-                    </p>
-                    {integrationStatus?.google_user_email && (
-                      <p className="text-xs text-zinc-300 font-mono pt-1">
-                        Account: {integrationStatus.google_user_email}
-                      </p>
-                    )}
                   </div>
 
-                  <div>
-                    {isLoadingStatus ? (
-                      <Loader2 className="w-5 h-5 text-zinc-500 animate-spin" />
-                    ) : integrationStatus?.google_connected ? (
+                  <div className="flex-1 overflow-y-auto">
+                    {isLoadingVault ? (
+                      <div className="flex items-center justify-center h-48 text-neutral-500">Loading document...</div>
+                    ) : isEditingVaultDoc ? (
+                      <textarea
+                        value={vaultDocEditDraft}
+                        onChange={(e) => setVaultDocEditDraft(e.target.value)}
+                        className="w-full h-full bg-[#141416] p-3 rounded-xl font-mono text-xs text-white border-none outline-none resize-none leading-relaxed"
+                      />
+                    ) : (
+                      <div className="prose prose-invert max-w-none text-xs leading-relaxed text-neutral-300 font-sans">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {vaultDocContent || '_Empty document_'}
+                        </ReactMarkdown>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 3. PLUGINS TAB */}
+            {activeTab === 'plugins' && (
+              <div className="space-y-4 text-xs">
+                {authError && (
+                  <div className="p-3.5 rounded-2xl bg-red-950/30 text-red-200 flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                    <div>{authError}</div>
+                  </div>
+                )}
+
+                <div className="p-5 rounded-2xl bg-[#0d0d0f] space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-white text-sm">Google Workspace</span>
+                        {integrationStatus?.google_connected ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-400">
+                            <Check className="w-3 h-3" /> Connected
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#18181b] text-neutral-400">
+                            Not Connected
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-neutral-400">
+                        Connect Google Calendar, Tasks, and Gmail for proactive briefings and email drafting.
+                      </p>
+                      {integrationStatus?.google_user_email && (
+                        <p className="text-neutral-300 font-mono pt-1">
+                          Account: {integrationStatus.google_user_email}
+                        </p>
+                      )}
+                    </div>
+
+                    {integrationStatus?.google_connected ? (
                       <button
                         type="button"
                         onClick={handleDisconnectGoogle}
                         disabled={isDisconnecting}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-500/30 bg-red-950/20 text-red-300 hover:bg-red-950/40 text-xs font-medium transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1f1f23] hover:bg-red-950/40 text-neutral-300 hover:text-red-400 transition-colors"
                       >
-                        {isDisconnecting ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Unplug className="w-3.5 h-3.5" />
-                        )}
-                        Disconnect
+                        <Unplug className="w-3.5 h-3.5" />
+                        <span>Disconnect</span>
                       </button>
                     ) : (
                       <button
                         type="button"
                         onClick={handleConnectGoogle}
                         disabled={isConnecting}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white text-xs font-semibold transition-colors disabled:opacity-50"
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors"
                       >
-                        {isConnecting ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-900" />
-                        ) : (
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        )}
-                        Connect Google Account
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Connect Account</span>
                       </button>
                     )}
                   </div>
                 </div>
-
-                {/* Sub-services breakdown */}
-                <div className="pt-2 border-t border-zinc-800/80 grid grid-cols-3 gap-2.5">
-                  <div className="p-2.5 rounded-xl border border-zinc-800/60 bg-[#09090b] flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-blue-400" />
-                    <div className="text-[11px]">
-                      <div className="font-medium text-zinc-200">Calendar</div>
-                      <div className="text-zinc-500 text-[10px]">
-                        {integrationStatus?.services?.calendar ? 'Active' : 'Disconnected'}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-2.5 rounded-xl border border-zinc-800/60 bg-[#09090b] flex items-center gap-2">
-                    <CheckSquare className="w-4 h-4 text-emerald-400" />
-                    <div className="text-[11px]">
-                      <div className="font-medium text-zinc-200">Tasks</div>
-                      <div className="text-zinc-500 text-[10px]">
-                        {integrationStatus?.services?.tasks ? 'Active' : 'Disconnected'}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-2.5 rounded-xl border border-zinc-800/60 bg-[#09090b] flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-amber-400" />
-                    <div className="text-[11px]">
-                      <div className="font-medium text-zinc-200">Gmail</div>
-                      <div className="text-zinc-500 text-[10px]">
-                        {integrationStatus?.services?.gmail ? 'Active' : 'Disconnected'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Policy description */}
-                <div className="pt-1 text-[11px] text-zinc-500 leading-normal">
-                  Frictionless operations: Reading calendar/tasks/emails, booking events, creating tasks, and saving drafts execute automatically. Sending emails directly to recipients requires explicit in-chat approval.
-                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* TAB 2: SCHEDULES */}
-          {activeTab === 'schedules' && (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold text-sm text-zinc-100">Proactive Schedules & Timed Reminders</h3>
-                  <p className="text-xs text-zinc-400">
-                    Velocity triggers autonomous briefings and tasks based on crons and timestamps (Asia/Kolkata).
-                  </p>
+            {/* 4. SCHEDULES TAB */}
+            {activeTab === 'schedules' && (
+              <div className="space-y-4 text-xs">
+                <div className="flex items-center justify-between pb-2">
+                  <span className="text-neutral-400">Proactive autonomous routines executed on schedule</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreatingSchedule(!isCreatingSchedule)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white text-black font-medium hover:bg-neutral-200 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>New Routine</span>
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setIsCreatingSchedule(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 hover:bg-white text-xs font-semibold transition-colors"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Add Schedule
-                </button>
-              </div>
 
-              {/* Create Schedule Modal Form */}
-              {isCreatingSchedule && (
-                <form
-                  onSubmit={handleCreateScheduleSubmit}
-                  className="p-4 rounded-xl border border-zinc-700 bg-[#0c0c0e] space-y-3.5 text-xs animate-fade-in"
-                >
-                  <div className="flex items-center justify-between font-semibold text-zinc-200">
-                    <span>Create New Schedule</span>
-                    <button
-                      type="button"
-                      onClick={() => setIsCreatingSchedule(false)}
-                      className="text-zinc-500 hover:text-zinc-300"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  {scheduleError && (
-                    <div className="p-2 rounded-lg bg-red-950/30 border border-red-500/30 text-red-300 text-[11px]">
-                      {scheduleError}
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-zinc-400 mb-1">Name</label>
-                      <input
-                        type="text"
-                        value={newScheduleName}
-                        onChange={(e) => setNewScheduleName(e.target.value)}
-                        placeholder="e.g. Daily Tech Briefing"
-                        className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-zinc-400 mb-1">Schedule Type</label>
-                      <select
-                        value={newScheduleType}
-                        onChange={(e) => setNewScheduleType(e.target.value as any)}
-                        className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
-                      >
-                        <option value="recurring">Recurring Schedule</option>
-                        <option value="one_shot">One-Shot Reminder</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {newScheduleType === 'recurring' ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-zinc-400 mb-1">Repeat</label>
-                        <select
-                          value={newScheduleFrequency}
-                          onChange={(e) => setNewScheduleFrequency(e.target.value as any)}
-                          className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
-                        >
-                          <option value="daily">Every day</option>
-                          <option value="weekdays">Weekdays (Mon - Fri)</option>
-                          <option value="weekends">Weekends (Sat - Sun)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-zinc-400 mb-1">Time (Asia/Kolkata)</label>
-                        <input
-                          type="time"
-                          value={newScheduleTime}
-                          onChange={(e) => setNewScheduleTime(e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div>
-                      <label className="block text-zinc-400 mb-1">Date & Time (Asia/Kolkata)</label>
-                      <input
-                        type="datetime-local"
-                        value={newScheduleDateTime}
-                        onChange={(e) => setNewScheduleDateTime(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-zinc-400 mb-1">Prompt Directive to Execute</label>
-                    <textarea
-                      value={newSchedulePrompt}
-                      onChange={(e) => setNewSchedulePrompt(e.target.value)}
-                      placeholder="e.g. Synthesize today's morning briefing, book focus block on calendar, and stage task in Google Tasks."
-                      rows={2}
-                      className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-zinc-400 mb-1">Optional Associated Skill</label>
-                    <select
-                      value={newScheduleSkillId}
-                      onChange={(e) => setNewScheduleSkillId(e.target.value)}
-                      className="w-full px-3 py-1.5 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 text-xs focus:outline-none focus:border-zinc-500"
-                    >
-                      <option value="">None (Standard Persona)</option>
-                      {skills.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name} ({s.id})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setIsCreatingSchedule(false)}
-                      className="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 text-xs"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isSubmittingSchedule}
-                      className="px-3.5 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 font-semibold text-xs hover:bg-white disabled:opacity-50"
-                    >
-                      {isSubmittingSchedule ? 'Saving...' : 'Save Schedule'}
-                    </button>
-                  </div>
-                </form>
-              )}
-
-              {/* Schedules List */}
-              {isLoadingSchedules ? (
-                <div className="flex items-center justify-center p-8 text-zinc-500 text-xs gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Loading schedules...
-                </div>
-              ) : schedules.length === 0 ? (
-                <div className="p-8 text-center rounded-2xl border border-zinc-800/80 bg-[#0c0c0e] text-zinc-400 text-xs space-y-1">
-                  <p className="font-medium text-zinc-300">No scheduled routines yet</p>
-                  <p className="text-zinc-500">
-                    Ask Velocity in chat (e.g. "Give me a briefing every morning at 8am") or click "Add Schedule" above.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {schedules.map((sched) => (
-                    <div
-                      key={sched.id}
-                      className="p-4 rounded-xl border border-zinc-800 bg-[#0c0c0e] flex items-center justify-between text-xs"
-                    >
-                      <div className="space-y-1 max-w-[70%]">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-zinc-100">{sched.name}</span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-800 text-zinc-300">
-                            {formatScheduleTiming(sched)}
-                          </span>
-                          <span
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
-                              sched.status === 'active'
-                                ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-800/40'
-                                : 'bg-zinc-800 text-zinc-400'
-                            }`}
-                          >
-                            {sched.status}
-                          </span>
-                        </div>
-                        <p className="text-zinc-400 line-clamp-1">{sched.prompt}</p>
-                        {sched.next_run_at && (
-                          <p className="text-[11px] text-zinc-500 font-mono">
-                            Next Run: {new Date(sched.next_run_at).toLocaleString()}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
+                {/* Create Routine Form (Friendly Time Selector - NO Cron Expression!) */}
+                {isCreatingSchedule && (
+                  <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-white text-xs">Schedule New Routine</h4>
+                      <div className="flex items-center gap-1 bg-[#18181b] p-0.5 rounded-xl">
                         <button
                           type="button"
-                          onClick={() => handleToggleSchedule(sched)}
-                          title={sched.status === 'active' ? 'Pause schedule' : 'Resume schedule'}
-                          className="p-1.5 rounded-lg border border-zinc-800 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+                          onClick={() => setNewScheduleType('recurring')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                            newScheduleType === 'recurring' ? 'bg-[#222227] text-white' : 'text-neutral-400'
+                          }`}
                         >
-                          {sched.status === 'active' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                          Recurring
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteSchedule(sched.id)}
-                          title="Delete schedule"
-                          className="p-1.5 rounded-lg border border-zinc-800 text-zinc-400 hover:text-red-400 hover:bg-red-950/20 transition-colors"
+                          onClick={() => setNewScheduleType('one_shot')}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                            newScheduleType === 'one_shot' ? 'bg-[#222227] text-white' : 'text-neutral-400'
+                          }`}
+                        >
+                          One-Time
+                        </button>
+                      </div>
+                    </div>
+
+                    {scheduleError && (
+                      <p className="text-red-400 text-[11px]">{scheduleError}</p>
+                    )}
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        placeholder="Routine Name (e.g. Morning Briefing, Deep Work Check-in)..."
+                        value={newScheduleName}
+                        onChange={(e) => setNewScheduleName(e.target.value)}
+                        className="w-full px-3 py-2 bg-[#18181b] rounded-xl text-white placeholder-neutral-500 border-none outline-none text-xs"
+                      />
+
+                      {newScheduleType === 'recurring' ? (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-neutral-400 text-[11px] block mb-1">Frequency</label>
+                            <select
+                              value={newScheduleFrequency}
+                              onChange={(e) => setNewScheduleFrequency(e.target.value as any)}
+                              className="w-full px-3 py-2 bg-[#18181b] rounded-xl text-white border-none outline-none text-xs"
+                            >
+                              <option value="daily">Daily</option>
+                              <option value="weekdays">Weekdays (Mon-Fri)</option>
+                              <option value="weekends">Weekends (Sat-Sun)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-neutral-400 text-[11px] block mb-1">Execution Time</label>
+                            <input
+                              type="time"
+                              value={newScheduleTime}
+                              onChange={(e) => setNewScheduleTime(e.target.value)}
+                              className="w-full px-3 py-2 bg-[#18181b] rounded-xl text-white border-none outline-none text-xs"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <label className="text-neutral-400 text-[11px] block mb-1">Date and Time</label>
+                          <input
+                            type="datetime-local"
+                            value={newScheduleDateTime}
+                            onChange={(e) => setNewScheduleDateTime(e.target.value)}
+                            className="w-full px-3 py-2 bg-[#18181b] rounded-xl text-white border-none outline-none text-xs"
+                          />
+                        </div>
+                      )}
+
+                      <div>
+                        <label className="text-neutral-400 text-[11px] block mb-1">Autonomous Instructions / Prompt</label>
+                        <textarea
+                          placeholder="What should Velocity do at this time? (e.g. Synthesize today's calendar and priority tasks)..."
+                          value={newSchedulePrompt}
+                          onChange={(e) => setNewSchedulePrompt(e.target.value)}
+                          rows={3}
+                          className="w-full p-2.5 bg-[#18181b] rounded-xl text-white placeholder-neutral-500 border-none outline-none text-xs resize-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsCreatingSchedule(false)}
+                        className="px-3 py-1.5 text-neutral-400 hover:text-white"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCreateSchedule}
+                        disabled={isSubmittingSchedule}
+                        className="px-4 py-1.5 bg-white text-black font-medium rounded-xl hover:bg-neutral-200 transition-colors"
+                      >
+                        {isSubmittingSchedule ? 'Saving...' : 'Save Routine'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Schedules List */}
+                <div className="space-y-2">
+                  {schedules.map((s) => (
+                    <div
+                      key={s.id}
+                      className="p-4 rounded-2xl bg-[#0d0d0f] flex items-center justify-between gap-4"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-white text-xs">{s.name}</span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                              s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-neutral-800 text-neutral-500'
+                            }`}
+                          >
+                            {s.status === 'active' ? 'Active' : 'Paused'}
+                          </span>
+                        </div>
+                        <p className="text-neutral-400 text-[11px] truncate mt-0.5">
+                          {s.prompt || 'Autonomous proactive routine'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSchedule(s)}
+                          title={s.status === 'active' ? 'Pause routine' : 'Resume routine'}
+                          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-[#18181b]"
+                        >
+                          {s.status === 'active' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSchedule(s.id)}
+                          title="Delete routine"
+                          className="p-1.5 rounded-lg text-neutral-400 hover:text-red-400 hover:bg-[#18181b]"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -736,251 +917,88 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 3: MODULAR SKILLS */}
-          {activeTab === 'skills' && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="font-semibold text-sm text-zinc-100">Modular Skills Architecture</h3>
-                <p className="text-xs text-zinc-400">
-                  Skills located in <code>data/skills/</code>. Velocity dynamically mounts procedural instructions based on user intent or slash commands.
-                </p>
               </div>
+            )}
 
-              {/* Instructions Editor Drawer */}
-              {editingSkill && (
-                <div className="p-4 rounded-xl border border-zinc-700 bg-[#0c0c0e] space-y-3 text-xs animate-fade-in">
-                  <div className="flex items-center justify-between font-semibold text-zinc-200">
-                    <span>Skill Instructions: {editingSkill.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => setEditingSkill(null)}
-                      className="text-zinc-500 hover:text-zinc-300"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <textarea
-                    value={skillInstructionsDraft}
-                    onChange={(e) => setSkillInstructionsDraft(e.target.value)}
-                    rows={8}
-                    className="w-full px-3 py-2 rounded-lg bg-[#09090b] border border-zinc-800 text-zinc-100 font-mono text-[11px] focus:outline-none focus:border-zinc-500 leading-relaxed"
-                  />
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setEditingSkill(null)}
-                      className="px-3 py-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 text-xs"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleSaveSkillInstructions}
-                      disabled={isSavingSkill}
-                      className="px-3.5 py-1.5 rounded-lg bg-zinc-100 text-zinc-900 font-semibold text-xs hover:bg-white disabled:opacity-50"
-                    >
-                      {isSavingSkill ? 'Saving...' : 'Save Instructions'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Skills List */}
-              {isLoadingSkills ? (
-                <div className="flex items-center justify-center p-8 text-zinc-500 text-xs gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Loading skills...
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {skills.map((skill) => (
-                    <div
-                      key={skill.id}
-                      className="p-4 rounded-xl border border-zinc-800 bg-[#0c0c0e] flex items-start justify-between text-xs gap-4"
-                    >
-                      <div className="space-y-1.5 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold text-zinc-100">{skill.name}</span>
-                          <span className="px-1.5 py-0.5 rounded font-mono text-[10px] bg-zinc-800 text-zinc-300">
-                            {skill.id}
-                          </span>
-                          {skill.slash_command && (
-                            <span className="px-1.5 py-0.5 rounded font-mono text-[10px] bg-blue-950/40 text-blue-400 border border-blue-800/40">
-                              {skill.slash_command}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-zinc-400 text-xs leading-relaxed">{skill.description}</p>
-                        {skill.allowed_tools && skill.allowed_tools.length > 0 && (
-                          <div className="flex flex-wrap gap-1 pt-1">
-                            {skill.allowed_tools.map((tool) => (
-                              <span
-                                key={tool}
-                                className="px-1.5 py-0.2 rounded text-[10px] bg-zinc-900 text-zinc-500 border border-zinc-800"
-                              >
-                                {tool}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenEditSkill(skill)}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-zinc-800 text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 text-xs transition-colors"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                          Instructions
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSkill(skill)}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                            skill.enabled
-                              ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800/40'
-                              : 'bg-zinc-900 text-zinc-500 border-zinc-800'
-                          }`}
-                        >
-                          {skill.enabled ? 'Enabled' : 'Disabled'}
-                        </button>
-                      </div>
+            {/* 5. SKILLS TAB */}
+            {activeTab === 'skills' && (
+              <div className="space-y-4 text-xs">
+                {editingSkill ? (
+                  <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                    <div className="flex items-center justify-between pb-2">
+                      <span className="font-semibold text-white">Edit Skill: {editingSkill.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setEditingSkill(null)}
+                        className="text-neutral-400 hover:text-white"
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 4: GENERAL & MODEL */}
-          {activeTab === 'general' && (
-            <div className="space-y-6 text-xs">
-              {/* Preferred Model */}
-              <div className="space-y-2">
-                <label className="font-semibold text-zinc-300 block">Default Primary Model</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.6', 'gpt-5.6-luna'] as SupportedModel[]).map((mod) => (
-                    <button
-                      key={mod}
-                      type="button"
-                      onClick={() => onSelectModel(mod)}
-                      className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-colors ${
-                        currentModel === mod
-                          ? 'border-zinc-200 bg-zinc-900 text-zinc-100'
-                          : 'border-zinc-800 bg-[#0c0c0e] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                      }`}
-                    >
-                      <span className="font-medium text-sm text-zinc-100">{mod}</span>
-                      <span className="text-[11px] text-zinc-500">
-                        {mod.includes('mini') ? 'Fast & lightweight' : 'High-capacity reasoning'}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+                    <textarea
+                      value={skillInstructionsDraft}
+                      onChange={(e) => setSkillInstructionsDraft(e.target.value)}
+                      rows={10}
+                      className="w-full p-3 bg-[#18181b] rounded-xl font-mono text-xs text-white border-none outline-none resize-none leading-relaxed"
+                    />
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={handleSaveSkillInstructions}
+                        disabled={isSavingSkill}
+                        className="px-4 py-1.5 bg-white text-black font-semibold rounded-xl hover:bg-neutral-200 transition-colors"
+                      >
+                        {isSavingSkill ? 'Saving...' : 'Save Instructions'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {skills.map((sk) => (
+                      <div
+                        key={sk.id}
+                        className="p-4 rounded-2xl bg-[#0d0d0f] flex items-center justify-between gap-4"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-white text-xs">{sk.name}</span>
+                            {sk.slash_command && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#18181b] text-neutral-400">
+                                {sk.slash_command}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-neutral-400 text-[11px] truncate mt-0.5">
+                            {sk.description || 'Specialized modular reasoning skill'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditSkill(sk)}
+                            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-[#18181b]"
+                            title="Edit Instructions"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSkill(sk)}
+                            className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-colors ${
+                              sk.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-neutral-800 text-neutral-500'
+                            }`}
+                          >
+                            {sk.enabled ? 'Enabled' : 'Disabled'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-
-              {/* Reasoning Effort */}
-              <div className="space-y-2">
-                <label className="font-semibold text-zinc-300 block">Thinking / Reasoning Effort</label>
-                <div className="flex gap-2">
-                  {(['low', 'medium', 'high'] as ThinkingEffort[]).map((effort) => (
-                    <button
-                      key={effort}
-                      type="button"
-                      onClick={() => onSelectEffort(effort)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium capitalize transition-colors ${
-                        currentEffort === effort
-                          ? 'border-zinc-200 bg-zinc-900 text-zinc-100'
-                          : 'border-zinc-800 bg-[#0c0c0e] text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      {effort}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Verbosity */}
-              <div className="space-y-2">
-                <label className="font-semibold text-zinc-300 block">Response Verbosity</label>
-                <div className="flex gap-2">
-                  {(['low', 'medium', 'high'] as Verbosity[]).map((verb) => (
-                    <button
-                      key={verb}
-                      type="button"
-                      onClick={() => onSelectVerbosity(verb)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium capitalize transition-colors ${
-                        currentVerbosity === verb
-                          ? 'border-zinc-200 bg-zinc-900 text-zinc-100'
-                          : 'border-zinc-800 bg-[#0c0c0e] text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      {verb}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Recall Budget */}
-              <div className="space-y-2">
-                <label className="font-semibold text-zinc-300 block">Episodic Recall Budget</label>
-                <div className="flex gap-2">
-                  {(['low', 'medium', 'high'] as RecallBudget[]).map((budget) => (
-                    <button
-                      key={budget}
-                      type="button"
-                      onClick={() => onSelectRecallBudget(budget)}
-                      className={`px-3 py-1.5 rounded-lg border text-xs font-medium capitalize transition-colors ${
-                        currentRecallBudget === budget
-                          ? 'border-zinc-200 bg-zinc-900 text-zinc-100'
-                          : 'border-zinc-800 bg-[#0c0c0e] text-zinc-400 hover:text-zinc-200'
-                      }`}
-                    >
-                      {budget}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 5: MEMORY VAULT */}
-          {activeTab === 'memory' && (
-            <div className="space-y-4 text-xs">
-              <div className="p-4 rounded-xl border border-zinc-800 bg-[#0c0c0e] space-y-3">
-                <h3 className="font-semibold text-sm text-zinc-100">Deterministic Memory Vault</h3>
-                <p className="text-zinc-400 leading-relaxed">
-                  Velocity maintains an authoritative file-based memory vault located at <code>data/memory/</code>.
-                  Core profiles, preferences, active context, and technical dossiers are deterministically loaded into every turn.
-                </p>
-                <div className="pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenMemoryInspector();
-                    }}
-                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-200 hover:bg-zinc-800 hover:text-white transition-colors"
-                  >
-                    <Brain className="w-4 h-4 text-emerald-400" />
-                    Open Full Memory Inspector
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-xl border border-zinc-800 bg-[#0c0c0e] space-y-2">
-                <h3 className="font-semibold text-sm text-zinc-100">Episodic Hindsight Memory</h3>
-                <p className="text-zinc-400 leading-relaxed">
-                  Long-term episodic conversation history is indexed and retained in the Vectorize Hindsight engine backed by PostgreSQL pgvector.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </main>
       </div>
     </div>
   );
