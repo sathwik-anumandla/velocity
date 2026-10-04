@@ -3,35 +3,139 @@ Pydantic Schemas for Velocity API
 """
 
 from typing import Optional, List, Literal, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _norm_model(v: Any) -> Optional[str]:
+    if v is None:
+        return None
+    s = str(v).lower().strip()
+    if not s:
+        return "gpt-5.4-mini"
+    if "mini" in s:
+        return "gpt-5.4-mini"
+    if any(k in s for k in ["gpt-5", "o1", "o3", "flagship", "4.5"]):
+        return "gpt-5.4"
+    if s in ["gpt-5.4-mini", "gpt-5.4"]:
+        return s
+    return "gpt-5.4-mini"
+
+
+def _norm_verbosity(v: Any) -> Optional[str]:
+    if v is None:
+        return None
+    s = str(v).lower().strip()
+    if s in ["concise", "low"]:
+        return "low"
+    if s in ["comprehensive", "high", "exhaustive"]:
+        return "high"
+    return "medium"
+
+
+def _norm_effort(v: Any) -> Optional[str]:
+    if v is None:
+        return None
+    s = str(v).lower().strip()
+    if s in ["none", "low", "medium", "high", "xhigh", "max"]:
+        return s
+    return "medium"
+
+
+def _norm_recall(v: Any) -> Optional[str]:
+    if v is None:
+        return None
+    s = str(v).lower().strip()
+    if s in ["low", "medium", "high"]:
+        return s
+    return "medium"
 
 
 class ChatRequest(BaseModel):
     session_id: str
     message: str
     message_id: Optional[str] = None
-    recall_budget: Optional[Literal["low", "medium", "high"]] = None
-    thinking_effort: Optional[Literal["none", "low", "medium", "high", "xhigh", "max"]] = None
-    verbosity: Optional[Literal["low", "medium", "high"]] = None
-    model: Optional[Literal["gpt-5.4-mini", "gpt-5.4"]] = None
+    recall_budget: Optional[str] = None
+    thinking_effort: Optional[str] = None
+    verbosity: Optional[str] = None
+    model: Optional[str] = None
     is_temporary: bool = False
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def val_model(cls, v):
+        return _norm_model(v)
+
+    @field_validator("verbosity", mode="before")
+    @classmethod
+    def val_verbosity(cls, v):
+        return _norm_verbosity(v)
+
+    @field_validator("thinking_effort", mode="before")
+    @classmethod
+    def val_effort(cls, v):
+        return _norm_effort(v)
+
+    @field_validator("recall_budget", mode="before")
+    @classmethod
+    def val_recall(cls, v):
+        return _norm_recall(v)
 
 
 class SessionCreate(BaseModel):
     id: Optional[str] = None
     name: Optional[str] = None
-    recall_budget: Literal["low", "medium", "high"] = "medium"
-    thinking_effort: Literal["none", "low", "medium", "high", "xhigh", "max"] = "medium"
-    verbosity: Literal["low", "medium", "high"] = "low"
-    model: Literal["gpt-5.4-mini", "gpt-5.4"] = "gpt-5.4-mini"
+    recall_budget: str = "medium"
+    thinking_effort: str = "medium"
+    verbosity: str = "low"
+    model: str = "gpt-5.4-mini"
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def val_model(cls, v):
+        return _norm_model(v) or "gpt-5.4-mini"
+
+    @field_validator("verbosity", mode="before")
+    @classmethod
+    def val_verbosity(cls, v):
+        return _norm_verbosity(v) or "low"
+
+    @field_validator("thinking_effort", mode="before")
+    @classmethod
+    def val_effort(cls, v):
+        return _norm_effort(v) or "medium"
+
+    @field_validator("recall_budget", mode="before")
+    @classmethod
+    def val_recall(cls, v):
+        return _norm_recall(v) or "medium"
 
 
 class SessionUpdate(BaseModel):
     name: Optional[str] = None
-    recall_budget: Optional[Literal["low", "medium", "high"]] = None
-    thinking_effort: Optional[Literal["none", "low", "medium", "high", "xhigh", "max"]] = None
-    verbosity: Optional[Literal["low", "medium", "high"]] = None
-    model: Optional[Literal["gpt-5.4-mini", "gpt-5.4"]] = None
+    recall_budget: Optional[str] = None
+    thinking_effort: Optional[str] = None
+    verbosity: Optional[str] = None
+    model: Optional[str] = None
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def val_model(cls, v):
+        return _norm_model(v)
+
+    @field_validator("verbosity", mode="before")
+    @classmethod
+    def val_verbosity(cls, v):
+        return _norm_verbosity(v)
+
+    @field_validator("thinking_effort", mode="before")
+    @classmethod
+    def val_effort(cls, v):
+        return _norm_effort(v)
+
+    @field_validator("recall_budget", mode="before")
+    @classmethod
+    def val_recall(cls, v):
+        return _norm_recall(v)
 
 
 class SessionResponse(BaseModel):

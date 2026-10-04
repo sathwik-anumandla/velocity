@@ -1786,6 +1786,7 @@ async def create_new_skill(payload: SkillCreateRequest):
 
 
 @app.put("/api/skills/{skill_id}", response_model=SkillResponse)
+@app.patch("/api/skills/{skill_id}", response_model=SkillResponse)
 async def update_existing_skill(skill_id: str, payload: SkillUpdateRequest):
     """
     Update an existing modular skill.
