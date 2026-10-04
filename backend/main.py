@@ -1084,6 +1084,9 @@ async def synthesize_thread_rollup(thread: Dict[str, Any], messages: List[Dict[s
     parent_session_id = thread.get("parent_session_id") or "main"
 
     recent = messages[-20:]
+    if not recent:
+        return None
+
     formatted_convo = "\n".join([f"{m['role'].upper()}: {m['content']}" for m in recent])
 
     prompt = (
@@ -1113,15 +1116,25 @@ async def synthesize_thread_rollup(thread: Dict[str, Any], messages: List[Dict[s
             ],
             max_completion_tokens=400,
         )
-        summary = resp.choices[0].message.content.strip()
+        summary = (resp.choices[0].message.content or "").strip() if resp.choices and resp.choices[0].message else ""
+        if not summary or len(summary) < 8:
+            return None
 
         # Update thread in DB
         new_status = "concluded" if conclude else thread.get("status", "active")
         db_update_thread(thread_id, rollup_summary=summary, status=new_status)
 
-        # Drop update bump in main timeline
         prefix = "Thread Concluded" if conclude else "Thread Update"
         bump_content = f"[{prefix}: {thread_name}]\n{summary}"
+
+        # Prevent duplicate update bumps if parent session already has a recent update for this thread
+        recent_parent = db_get_messages(parent_session_id, limit=5)
+        for pm in recent_parent:
+            if pm.get("thread_id") == thread_id and (pm.get("content") == bump_content or summary in pm.get("content", "")):
+                logger.info(f"Rollup for thread {thread_id} already posted; skipping duplicate bump.")
+                return summary
+
+        # Drop update bump in main timeline
         bump_id = str(uuid.uuid4())
         db_add_message(
             message_id=bump_id,

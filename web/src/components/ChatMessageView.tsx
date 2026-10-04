@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FC } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Pencil, Copy, Check, RotateCcw, LineSquiggle, FileCode2 } from 'lucide-react';
+import { Pencil, Copy, Check, RotateCcw, LineSquiggle, FileCode2, ArrowRight } from 'lucide-react';
 import type { ChatMessage, ThreadProposal, Artifact } from '../types';
 import { CodeBlock } from './CognitiveWidgets';
 
@@ -79,7 +79,21 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
     return null;
   };
 
+  // Detect Thread Rollup milestone message
+  const detectThreadRollup = (content: string) => {
+    const match = content.match(/^\[(Thread Update|Thread Concluded):\s*([^\]]+)\]\s*\n?([\s\S]*)$/i);
+    if (match) {
+      return {
+        type: match[1],
+        title: match[2].trim(),
+        summary: match[3].trim(),
+      };
+    }
+    return null;
+  };
+
   const routine = !isUser && message.content ? detectRoutine(message.content) : null;
+  const threadRollup = !isUser && message.content ? detectThreadRollup(message.content) : null;
   const displayContent = routine ? routine.content : message.content;
 
   // 1. User Message (Capsule on right)
@@ -157,6 +171,51 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
             </button>
           </div>
         )}
+      </div>
+    );
+  }
+
+  // 1.5. Thread Rollup Milestone Card
+  if (threadRollup) {
+    return (
+      <div className="flex flex-col items-start mb-3 group w-full select-none">
+        <div
+          onClick={() => {
+            if (message.thread_id) {
+              onOpenThread?.(message.thread_id);
+            }
+          }}
+          className="flex flex-col gap-2 max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#16161a] hover:bg-[#1c1c22] p-4 text-neutral-100 shadow-sm border-none transition-all cursor-pointer group/rollup"
+        >
+          <div className="flex items-center justify-between gap-3 w-full">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-violet-500/15 text-violet-400 flex items-center justify-center flex-shrink-0 group-hover/rollup:scale-105 transition-transform">
+                <LineSquiggle className="w-3.5 h-3.5" />
+              </div>
+              <span className="text-xs font-semibold text-white tracking-tight truncate">
+                {threadRollup.title}
+              </span>
+            </div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-full shrink-0">
+              {threadRollup.type}
+            </span>
+          </div>
+
+          {threadRollup.summary ? (
+            <p className="text-[13.5px] leading-relaxed text-neutral-300 font-normal">
+              {threadRollup.summary}
+            </p>
+          ) : (
+            <p className="text-[12px] text-neutral-500 italic">
+              Side chat active. Click to view discussion.
+            </p>
+          )}
+
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-neutral-500 group-hover/rollup:text-violet-300 transition-colors pt-0.5">
+            <span>Open Thread</span>
+            <ArrowRight className="w-3 h-3" />
+          </div>
+        </div>
       </div>
     );
   }
