@@ -1853,9 +1853,9 @@ async def mobile_setup_page(request: Request):
     })
     has_creds = bool(client_id and client_secret)
 
-    qr_container = "<div id='qrcode' class='qr-wrapper'></div>" if has_creds else ""
-    copy_btn = f"<button class='btn' onclick='navigator.clipboard.writeText({json.dumps(payload)}); alert(`Copied connection payload to clipboard!`);'>Copy Connection Payload</button>" if has_creds else ""
-    warning_box = "" if has_creds else "<div class='warning'><b>[Warning] Service Token not configured in .env</b><br><br>Add <code>CF_ACCESS_CLIENT_ID</code> and <code>CF_ACCESS_CLIENT_SECRET</code> to your VPS <code>/root/velocity/.env</code>, then restart the backend.</div>"
+    qr_container = "<div id='qrcode' class='qr-wrapper'></div>"
+    copy_btn = f"<button class='btn' onclick='navigator.clipboard.writeText({json.dumps(payload)}); alert(`Copied connection payload to clipboard!`);'>Copy Connection Payload</button>"
+    warning_box = "" if has_creds else "<div class='warning' style='margin-top: 16px; font-size: 11.5px; color: #a1a1aa; background: #141416; padding: 12px; border-radius: 12px;'>Direct connection mode. (Optional: To authenticate through Cloudflare Access, add CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET to .env)</div>"
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en" class="dark">
