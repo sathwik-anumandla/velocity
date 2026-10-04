@@ -105,6 +105,7 @@ class GoogleWorkspaceService:
             client_config,
             scopes=GOOGLE_SCOPES,
             redirect_uri=redirect_uri,
+            autogenerate_code_verifier=False,
         )
 
         auth_url, _ = flow.authorization_url(
@@ -130,6 +131,7 @@ class GoogleWorkspaceService:
             client_config,
             scopes=GOOGLE_SCOPES,
             redirect_uri=redirect_uri,
+            autogenerate_code_verifier=False,
         )
         flow.fetch_token(code=code)
         creds = flow.credentials

@@ -27,6 +27,7 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialTab?: 'general' | 'plugins' | 'memory';
+  initialError?: string | null;
   currentModel: SupportedModel;
   onSelectModel: (model: SupportedModel) => void;
   currentEffort: ThinkingEffort;
@@ -42,6 +43,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   initialTab = 'plugins',
+  initialError = null,
   currentModel,
   onSelectModel,
   currentEffort,
@@ -57,15 +59,18 @@ export const SettingsModal: FC<SettingsModalProps> = ({
   const [isLoadingStatus, setIsLoadingStatus] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<string | null>(initialError);
 
   // Sync initialTab when modal opens
   useEffect(() => {
     if (isOpen) {
       setActiveTab(initialTab);
+      if (initialError) {
+        setAuthError(initialError);
+      }
       loadIntegrationStatus();
     }
-  }, [isOpen, initialTab]);
+  }, [isOpen, initialTab, initialError]);
 
   const loadIntegrationStatus = async () => {
     setIsLoadingStatus(true);

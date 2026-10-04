@@ -55,6 +55,7 @@ export function App() {
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'plugins' | 'memory'>('plugins');
+  const [settingsError, setSettingsError] = useState<string | null>(null);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const isUserScrolledUpRef = useRef(false);
 
@@ -87,11 +88,15 @@ export function App() {
     const params = new URLSearchParams(window.location.search);
     const settingsParam = params.get('settings');
     const connectedParam = params.get('connected');
-    if (settingsParam || connectedParam) {
+    const errorParam = params.get('error');
+    if (settingsParam || connectedParam || errorParam) {
       if (settingsParam === 'plugins' || settingsParam === 'general' || settingsParam === 'memory') {
         setSettingsTab(settingsParam);
       } else {
         setSettingsTab('plugins');
+      }
+      if (errorParam) {
+        setSettingsError(errorParam);
       }
       setIsSettingsOpen(true);
       window.history.replaceState({}, '', window.location.pathname);
@@ -944,8 +949,12 @@ export function App() {
       {/* Settings Modal (Plugins & General) */}
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => {
+          setIsSettingsOpen(false);
+          setSettingsError(null);
+        }}
         initialTab={settingsTab}
+        initialError={settingsError}
         currentModel={selectedModel}
         onSelectModel={(m) => {
           setSelectedModel(m);
