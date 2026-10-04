@@ -334,6 +334,38 @@ def compose_responses_input(
                     f"\n\n[Persistent Memory - Current Context & Open Loops]:\n{current_context.strip()}"
                 )
 
+    # Phase 5: Skills Architecture & Slash Command Routing
+    try:
+        from backend.skills_manager import find_skill_by_slash_command, get_skills_prompt_manifest
+        matched_skill = find_skill_by_slash_command(user_message)
+        if matched_skill:
+            sk_name = matched_skill["name"]
+            sk_instr = matched_skill.get("instructions", "")
+            instructions += (
+                f"\n\n[Active Modular Skill - {sk_name}]:\n"
+                f"Follow these specific procedural instructions for this turn:\n{sk_instr}\n"
+            )
+        else:
+            manifest_str = get_skills_prompt_manifest()
+            instructions += f"\n\n[Skills Architecture]:\n{manifest_str}\n"
+    except Exception:
+        pass
+
+    # Phase 5: Proactive Scheduler & Reminders Directive
+    try:
+        from backend.scheduler import get_user_timezone_str
+        tz_str = get_user_timezone_str()
+        instructions += (
+            f"\n\n[Proactive Scheduler & Reminders - User Timezone: {tz_str}]:\n"
+            "- You have the tools `create_scheduled_event`, `list_scheduled_events`, and `delete_scheduled_event`.\n"
+            "- When Sathwik says 'remind me at 10pm to...', 'schedule a briefing every morning at 8am', or requests future autonomous tasks, use `create_scheduled_event`.\n"
+            "- For one-shot timed reminders ('at 10pm', 'tomorrow at 4pm', 'in 45 minutes'), set event_type='one_shot' and calculate the exact run_at timestamp in user's timezone.\n"
+            "- For recurring routines ('every day at 8am', 'every Monday at 9am'), set event_type='recurring' with the standard 5-field cron_expression.\n"
+            "- You also have the tool `create_or_update_skill` to create or modify skills in data/skills/ whenever Sathwik establishes a new repeatable workflow or asks to alter an existing skill's behavior."
+        )
+    except Exception:
+        pass
+
     input_items: List[Dict[str, Any]] = []
 
     # 2. Windowed conversation history

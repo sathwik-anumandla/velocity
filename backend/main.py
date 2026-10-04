@@ -50,6 +50,11 @@ from backend.database import (
     update_staged_action_status as db_update_staged_action_status,
     list_staged_actions as db_list_staged_actions,
     update_staged_action_message_id as db_update_staged_action_message_id,
+    create_scheduled_event as db_create_scheduled_event,
+    get_scheduled_event as db_get_scheduled_event,
+    update_scheduled_event as db_update_scheduled_event,
+    list_scheduled_events as db_list_scheduled_events,
+    delete_scheduled_event as db_delete_scheduled_event,
 )
 from backend.schemas import (
     ChatRequest,
@@ -70,6 +75,25 @@ from backend.schemas import (
     GoogleAuthUrlResponse,
     StagedActionResponse,
     ActionRespondRequest,
+    ScheduledEventCreate,
+    ScheduledEventUpdate,
+    ScheduledEventResponse,
+    SkillResponse,
+    SkillCreateRequest,
+    SkillUpdateRequest,
+)
+from backend.skills_manager import (
+    seed_skills_if_needed,
+    list_skills as sm_list_skills,
+    get_skill as sm_get_skill,
+    create_or_update_skill as sm_create_or_update_skill,
+    delete_skill as sm_delete_skill,
+)
+from backend.scheduler import (
+    proactive_scheduler,
+    event_dispatcher,
+    compute_next_run,
+    get_user_timezone_str,
 )
 from backend.pdf_service import generate_artifact_pdf
 from backend.hindsight import HindsightClient
@@ -329,14 +353,23 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(seed_vault_if_needed, hindsight_client)
     logger.info("Deterministic Memory Vault checked/initialized")
 
+    # Seed modular skills from template if not present
+    await asyncio.to_thread(seed_skills_if_needed)
+    logger.info("Modular Skills checked/initialized")
+
     # Bootstrap Hindsight memory bank & foundational mental models in the background
     asyncio.create_task(asyncio.to_thread(hindsight_client.bootstrap_memory_bank))
 
     # Launch automated nightly dreaming scheduler (23:00 UTC / 04:30 AM IST)
     dream_task = asyncio.create_task(run_nightly_dream_scheduler(hindsight_client))
 
+    # Launch proactive scheduler
+    proactive_scheduler.set_runner_factory(lambda: responses_runner)
+    proactive_scheduler.start()
+
     yield
     # Shutdown
+    proactive_scheduler.stop()
     dream_task.cancel()
     try:
         await dream_task
@@ -1554,6 +1587,216 @@ async def respond_to_action(action_id: str, payload: ActionRespondRequest):
         status_code=400,
         detail=f"Unsupported action provider/type: {action.get('provider')}.{action.get('action_type')}",
     )
+
+
+# ==============================================================================
+# Phase 5: Proactive Schedules Endpoints
+# ==============================================================================
+
+@app.get("/api/schedules", response_model=List[ScheduledEventResponse])
+async def list_schedules(
+    status: Optional[str] = Query(None),
+    event_type: Optional[str] = Query(None),
+    session_id: Optional[str] = Query(None),
+):
+    """
+    List scheduled events matching optional filters.
+    """
+    events = await asyncio.to_thread(
+        db_list_scheduled_events, status=status, event_type=event_type, session_id=session_id
+    )
+    return [ScheduledEventResponse(**e) for e in events]
+
+
+@app.post("/api/schedules", response_model=ScheduledEventResponse)
+async def create_schedule(payload: ScheduledEventCreate):
+    """
+    Create a new scheduled event (recurring cron or one-shot reminder).
+    """
+    tz_str = payload.timezone or get_user_timezone_str()
+    next_run_iso = compute_next_run(
+        cron_expr=payload.cron_expression,
+        run_at=payload.run_at,
+        timezone_str=tz_str,
+    )
+    event = await asyncio.to_thread(
+        db_create_scheduled_event,
+        name=payload.name,
+        event_type=payload.event_type,
+        prompt=payload.prompt,
+        cron_expression=payload.cron_expression,
+        run_at=payload.run_at,
+        timezone_str=tz_str,
+        skill_id=payload.skill_id,
+        session_id=payload.session_id,
+        status="active",
+        next_run_at=next_run_iso,
+    )
+    return ScheduledEventResponse(**event)
+
+
+@app.patch("/api/schedules/{event_id}", response_model=ScheduledEventResponse)
+async def update_schedule(event_id: str, payload: ScheduledEventUpdate):
+    """
+    Update fields of an existing scheduled event.
+    """
+    existing = await asyncio.to_thread(db_get_scheduled_event, event_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Scheduled event not found")
+
+    updates = payload.model_dump(exclude_unset=True)
+    if "cron_expression" in updates or "run_at" in updates or "timezone" in updates:
+        cron_expr = updates.get("cron_expression", existing.get("cron_expression"))
+        run_at = updates.get("run_at", existing.get("run_at"))
+        tz_str = updates.get("timezone", existing.get("timezone", get_user_timezone_str()))
+        next_run_iso = compute_next_run(cron_expr=cron_expr, run_at=run_at, timezone_str=tz_str)
+        updates["next_run_at"] = next_run_iso
+
+    updated = await asyncio.to_thread(db_update_scheduled_event, event_id, **updates)
+    return ScheduledEventResponse(**updated)
+
+
+@app.delete("/api/schedules/{event_id}")
+async def delete_schedule(event_id: str):
+    """
+    Delete a scheduled event.
+    """
+    success = await asyncio.to_thread(db_delete_scheduled_event, event_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Scheduled event not found")
+    return {"status": "deleted", "id": event_id}
+
+
+# ==============================================================================
+# Phase 5: Modular Skills Endpoints
+# ==============================================================================
+
+@app.get("/api/skills", response_model=List[SkillResponse])
+async def list_installed_skills():
+    """
+    List all installed modular skills and their manifests.
+    """
+    skills = await asyncio.to_thread(sm_list_skills)
+    return [SkillResponse(**s) for s in skills]
+
+
+@app.get("/api/skills/{skill_id}", response_model=SkillResponse)
+async def get_single_skill(skill_id: str):
+    """
+    Retrieve details and instructions for a specific skill.
+    """
+    skill = await asyncio.to_thread(sm_get_skill, skill_id)
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return SkillResponse(**skill)
+
+
+@app.post("/api/skills", response_model=SkillResponse)
+async def create_new_skill(payload: SkillCreateRequest):
+    """
+    Create a new modular skill in data/skills/.
+    """
+    try:
+        saved = await asyncio.to_thread(
+            sm_create_or_update_skill,
+            skill_id=payload.id,
+            name=payload.name,
+            description=payload.description,
+            instructions=payload.instructions,
+            enabled=payload.enabled,
+            slash_command=payload.slash_command,
+            allowed_tools=payload.allowed_tools,
+            memory_files=payload.memory_files,
+        )
+        return SkillResponse(**saved)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error creating skill: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create skill")
+
+
+@app.put("/api/skills/{skill_id}", response_model=SkillResponse)
+async def update_existing_skill(skill_id: str, payload: SkillUpdateRequest):
+    """
+    Update an existing modular skill.
+    """
+    existing = await asyncio.to_thread(sm_get_skill, skill_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    name = payload.name if payload.name is not None else existing.get("name", "")
+    description = payload.description if payload.description is not None else existing.get("description", "")
+    instructions = payload.instructions if payload.instructions is not None else existing.get("instructions", "")
+    enabled = payload.enabled if payload.enabled is not None else existing.get("enabled", True)
+    slash_command = payload.slash_command if payload.slash_command is not None else existing.get("slash_command")
+    allowed_tools = payload.allowed_tools if payload.allowed_tools is not None else existing.get("allowed_tools")
+    memory_files = payload.memory_files if payload.memory_files is not None else existing.get("memory_files")
+
+    saved = await asyncio.to_thread(
+        sm_create_or_update_skill,
+        skill_id=skill_id,
+        name=name,
+        description=description,
+        instructions=instructions,
+        enabled=enabled,
+        slash_command=slash_command,
+        allowed_tools=allowed_tools,
+        memory_files=memory_files,
+    )
+    return SkillResponse(**saved)
+
+
+@app.delete("/api/skills/{skill_id}")
+async def delete_existing_skill(skill_id: str):
+    """
+    Delete a modular skill directory.
+    """
+    success = await asyncio.to_thread(sm_delete_skill, skill_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    return {"status": "deleted", "id": skill_id}
+
+
+# ==============================================================================
+# Phase 5: Real-Time Proactive Events Stream (SSE)
+# ==============================================================================
+
+@app.get("/api/stream/events")
+async def stream_proactive_events(request: Request):
+    """
+    Server-Sent Events (SSE) stream for real-time proactive events and timeline push.
+    Connected web clients receive autonomous turns and reminders live.
+    """
+    q = event_dispatcher.subscribe_sse()
+
+    async def event_generator():
+        try:
+            yield {
+                "event": "connected",
+                "data": json.dumps({"status": "connected", "time": datetime.now(timezone.utc).isoformat()})
+            }
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(q.get(), timeout=25.0)
+                    yield {
+                        "event": "proactive_event",
+                        "data": json.dumps(event),
+                    }
+                except asyncio.TimeoutError:
+                    yield {
+                        "event": "ping",
+                        "data": json.dumps({"ping": "keep-alive"})
+                    }
+        finally:
+            event_dispatcher.unsubscribe_sse(q)
+
+    return EventSourceResponse(event_generator())
+
+
+
 
 
 # ==============================================================================

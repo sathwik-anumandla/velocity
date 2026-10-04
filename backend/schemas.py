@@ -172,3 +172,79 @@ class StagedActionResponse(BaseModel):
 class ActionRespondRequest(BaseModel):
     action: Literal["confirm", "decline"]
 
+
+# ==============================================================================
+# Phase 5: Scheduled Events & Skills Schemas (Proactive Engine)
+# ==============================================================================
+
+class ScheduledEventCreate(BaseModel):
+    name: str
+    event_type: Literal["recurring", "one_shot"]
+    prompt: str
+    cron_expression: Optional[str] = None
+    run_at: Optional[str] = None
+    timezone: str = "Asia/Kolkata"
+    skill_id: Optional[str] = None
+    session_id: str = "main"
+
+
+class ScheduledEventUpdate(BaseModel):
+    name: Optional[str] = None
+    event_type: Optional[Literal["recurring", "one_shot"]] = None
+    prompt: Optional[str] = None
+    cron_expression: Optional[str] = None
+    run_at: Optional[str] = None
+    timezone: Optional[str] = None
+    skill_id: Optional[str] = None
+    status: Optional[Literal["active", "paused", "completed", "cancelled"]] = None
+
+
+class ScheduledEventResponse(BaseModel):
+    id: str
+    name: str
+    event_type: str
+    cron_expression: Optional[str] = None
+    run_at: Optional[str] = None
+    timezone: str
+    prompt: str
+    skill_id: Optional[str] = None
+    session_id: str
+    status: str
+    last_run_at: Optional[str] = None
+    next_run_at: Optional[str] = None
+    created_at: str
+    updated_at: str
+
+
+class SkillResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    enabled: bool = True
+    slash_command: Optional[str] = None
+    allowed_tools: List[str] = []
+    memory_files: List[str] = []
+    instructions: Optional[str] = None
+
+
+class SkillCreateRequest(BaseModel):
+    id: str
+    name: str
+    description: str
+    enabled: bool = True
+    slash_command: Optional[str] = None
+    allowed_tools: List[str] = []
+    memory_files: List[str] = []
+    instructions: str
+
+
+class SkillUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    enabled: Optional[bool] = None
+    slash_command: Optional[str] = None
+    allowed_tools: Optional[List[str]] = None
+    memory_files: Optional[List[str]] = None
+    instructions: Optional[str] = None
+
+

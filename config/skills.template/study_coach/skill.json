@@ -1,0 +1,17 @@
+{
+  "id": "study_coach",
+  "name": "Study Coach & Active Recall",
+  "description": "Ingests NotebookLM study notes, tracks concepts in memory dossiers, and generates active recall tests.",
+  "enabled": true,
+  "slash_command": "/study",
+  "allowed_tools": [
+    "read_memory_doc",
+    "create_memory_doc",
+    "update_memory_section",
+    "tavily_search"
+  ],
+  "memory_files": [
+    "study/dsa.md",
+    "core/active_context.md"
+  ]
+}

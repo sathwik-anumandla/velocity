@@ -13,6 +13,8 @@ import type {
   Artifact,
   IntegrationStatus,
   StagedAction,
+  ScheduledEvent,
+  Skill,
 } from './types';
 
 const API_BASE = ''; // relative URL, handled by Vite proxy in dev and FastAPI mount in prod
@@ -542,6 +544,138 @@ export async function respondToStagedAction(actionId: string, action: 'confirm' 
   }
   return res.json();
 }
+
+
+// ==========================================
+// Phase 5: Scheduled Events & Skills
+// ==========================================
+
+export async function listSchedules(status?: string, eventType?: string): Promise<ScheduledEvent[]> {
+  const params = new URLSearchParams();
+  if (status) params.append('status', status);
+  if (eventType) params.append('event_type', eventType);
+  const res = await fetch(`${API_BASE}/api/schedules?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed to list schedules: ${res.status}`);
+  return res.json();
+}
+
+export async function createSchedule(data: {
+  name: string;
+  event_type: 'recurring' | 'one_shot';
+  prompt: string;
+  cron_expression?: string;
+  run_at?: string;
+  timezone?: string;
+  skill_id?: string;
+  session_id?: string;
+}): Promise<ScheduledEvent> {
+  const res = await fetch(`${API_BASE}/api/schedules`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(err.detail || 'Failed to create schedule');
+  }
+  return res.json();
+}
+
+export async function updateSchedule(
+  eventId: string,
+  data: Partial<{
+    name: string;
+    event_type: 'recurring' | 'one_shot';
+    prompt: string;
+    cron_expression: string;
+    run_at: string;
+    timezone: string;
+    skill_id: string;
+    status: 'active' | 'paused' | 'completed' | 'cancelled';
+  }>
+): Promise<ScheduledEvent> {
+  const res = await fetch(`${API_BASE}/api/schedules/${eventId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(err.detail || 'Failed to update schedule');
+  }
+  return res.json();
+}
+
+export async function deleteSchedule(eventId: string): Promise<{ status: string; id: string }> {
+  const res = await fetch(`${API_BASE}/api/schedules/${eventId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to delete schedule: ${res.status}`);
+  return res.json();
+}
+
+export async function listSkills(): Promise<Skill[]> {
+  const res = await fetch(`${API_BASE}/api/skills`);
+  if (!res.ok) throw new Error(`Failed to list skills: ${res.status}`);
+  return res.json();
+}
+
+export async function getSkill(skillId: string): Promise<Skill> {
+  const res = await fetch(`${API_BASE}/api/skills/${skillId}`);
+  if (!res.ok) throw new Error(`Failed to get skill: ${res.status}`);
+  return res.json();
+}
+
+export async function createSkill(data: {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  enabled?: boolean;
+  slash_command?: string;
+  allowed_tools?: string[];
+  memory_files?: string[];
+}): Promise<Skill> {
+  const res = await fetch(`${API_BASE}/api/skills`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(err.detail || 'Failed to create skill');
+  }
+  return res.json();
+}
+
+export async function updateSkill(
+  skillId: string,
+  data: Partial<{
+    name: string;
+    description: string;
+    instructions: string;
+    enabled: boolean;
+    slash_command: string;
+    allowed_tools: string[];
+    memory_files: string[];
+  }>
+): Promise<Skill> {
+  const res = await fetch(`${API_BASE}/api/skills/${skillId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: `HTTP ${res.status}` }));
+    throw new Error(err.detail || 'Failed to update skill');
+  }
+  return res.json();
+}
+
+export async function deleteSkill(skillId: string): Promise<{ status: string; id: string }> {
+  const res = await fetch(`${API_BASE}/api/skills/${skillId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`Failed to delete skill: ${res.status}`);
+  return res.json();
+}
+
 
 
 

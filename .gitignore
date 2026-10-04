@@ -54,6 +54,9 @@ data/memory/
 !data/memory.template/
 !data/memory.template/*.log
 
+# Skills Runtime State
+data/skills/
+
 # Flutter & Dart
 .dart_tool/
 .pub-cache/

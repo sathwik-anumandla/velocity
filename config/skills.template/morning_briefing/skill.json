@@ -1,0 +1,21 @@
+{
+  "id": "morning_briefing",
+  "name": "Morning Executive Briefing",
+  "description": "Prepares daily schedule, task list, and study plan by analyzing Google Calendar, Tasks, Gmail, and study track.",
+  "enabled": true,
+  "slash_command": "/briefing",
+  "allowed_tools": [
+    "gcal_list_events",
+    "gcal_create_event",
+    "gtasks_list_tasks",
+    "gtasks_create_task",
+    "gmail_list_unread",
+    "read_memory_doc",
+    "tavily_search"
+  ],
+  "memory_files": [
+    "core/profile.md",
+    "core/active_context.md",
+    "study/dsa.md"
+  ]
+}

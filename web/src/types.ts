@@ -161,3 +161,32 @@ export interface SearchResult {
   snippet?: string;
   session_name?: string;
 }
+
+export interface ScheduledEvent {
+  id: string;
+  name: string;
+  event_type: 'recurring' | 'one_shot';
+  cron_expression?: string | null;
+  run_at?: string | null;
+  timezone: string;
+  prompt: string;
+  skill_id?: string | null;
+  session_id: string;
+  status: 'active' | 'paused' | 'completed' | 'cancelled';
+  last_run_at?: string | null;
+  next_run_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  slash_command?: string | null;
+  allowed_tools: string[];
+  memory_files: string[];
+  instructions?: string;
+}
+

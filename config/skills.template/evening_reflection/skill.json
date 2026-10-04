@@ -1,0 +1,17 @@
+{
+  "id": "evening_reflection",
+  "name": "Evening Reflection & Memory Sync",
+  "description": "Reviews daily accomplishments, completed tasks, logs activity, and stages focus for tomorrow.",
+  "enabled": true,
+  "slash_command": "/reflection",
+  "allowed_tools": [
+    "gtasks_list_tasks",
+    "gcal_list_events",
+    "read_memory_doc",
+    "update_memory_section"
+  ],
+  "memory_files": [
+    "core/active_context.md",
+    "study/dsa.md"
+  ]
+}

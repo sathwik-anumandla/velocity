@@ -24,6 +24,15 @@ from backend.database import (
     create_artifact as db_create_artifact,
     update_artifact as db_update_artifact,
     create_staged_action as db_create_staged_action,
+    create_scheduled_event as db_create_scheduled_event,
+    list_scheduled_events as db_list_scheduled_events,
+    delete_scheduled_event as db_delete_scheduled_event,
+)
+from backend.scheduler import compute_next_run, get_user_timezone_str
+from backend.skills_manager import (
+    create_or_update_skill as sm_create_or_update_skill,
+    list_skills as sm_list_skills,
+    delete_skill as sm_delete_skill,
 )
 from backend.google_service import google_workspace
 from backend.vault import (
@@ -473,6 +482,159 @@ GMAIL_SEND_EMAIL_TOOL_DEFINITION = {
     },
 }
 
+CREATE_SCHEDULED_EVENT_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "create_scheduled_event",
+    "description": (
+        "Schedule an autonomous reminder or recurring routine in Velocity. "
+        "For one-shot timed events (e.g. 'at 10pm', 'tomorrow at 4pm', 'in 30 minutes'), "
+        "set event_type='one_shot' and provide run_at in ISO 8601 format. "
+        "For recurring routines (e.g. 'every morning at 8am', 'weekdays at 10am'), "
+        "set event_type='recurring' and provide cron_expression (e.g. '0 8 * * *'). "
+        "Prompt is the exact prompt/directive that will be executed when triggered."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "name": {
+                "type": "string",
+                "description": "Short name for the event, e.g. 'Daily Tech Briefing' or 'Review Raft Paper'.",
+            },
+            "event_type": {
+                "type": "string",
+                "enum": ["recurring", "one_shot"],
+                "description": "Whether the event repeats via cron or runs once at a specific timestamp.",
+            },
+            "prompt": {
+                "type": "string",
+                "description": "The instruction or directive to execute autonomously when the event fires.",
+            },
+            "cron_expression": {
+                "type": "string",
+                "description": "Standard 5-field cron expression for recurring events (e.g. '0 10 * * *' for 10:00 AM daily).",
+            },
+            "run_at": {
+                "type": "string",
+                "description": "ISO 8601 timestamp for one_shot events (e.g. '2026-10-04T22:00:00+05:30').",
+            },
+            "skill_id": {
+                "type": "string",
+                "description": "Optional skill ID to associate with this routine (e.g. 'morning_briefing').",
+            },
+        },
+        "required": ["name", "event_type", "prompt"],
+        "additionalProperties": False,
+    },
+}
+
+LIST_SCHEDULED_EVENTS_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "list_scheduled_events",
+    "description": "List existing scheduled reminders and recurring cron jobs in Velocity.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "status": {
+                "type": "string",
+                "enum": ["active", "paused", "completed", "cancelled"],
+                "description": "Optional status filter.",
+            }
+        },
+        "additionalProperties": False,
+    },
+}
+
+DELETE_SCHEDULED_EVENT_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "delete_scheduled_event",
+    "description": "Delete or cancel a scheduled event or reminder by its ID.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "event_id": {
+                "type": "string",
+                "description": "The unique event ID (e.g. 'sched_abcd1234').",
+            }
+        },
+        "required": ["event_id"],
+        "additionalProperties": False,
+    },
+}
+
+CREATE_OR_UPDATE_SKILL_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "create_or_update_skill",
+    "description": (
+        "Create or modify a modular skill in Velocity. "
+        "Writes instructions.md and skill.json manifest into data/skills/{skill_id}/. "
+        "Use this whenever Sathwik establishes a new repeatable workflow or asks to alter an existing skill's behavior."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "skill_id": {
+                "type": "string",
+                "description": "Unique identifier, lowercase alphanumeric with underscores (e.g. 'morning_briefing', 'tech_interviewer').",
+            },
+            "name": {
+                "type": "string",
+                "description": "Human-readable skill name.",
+            },
+            "description": {
+                "type": "string",
+                "description": "Short summary of what this skill does and when it should be used.",
+            },
+            "instructions": {
+                "type": "string",
+                "description": "Detailed markdown procedural instructions for executing this skill.",
+            },
+            "slash_command": {
+                "type": "string",
+                "description": "Optional shortcut command starting with slash (e.g. '/briefing').",
+            },
+            "allowed_tools": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional list of tool names this skill uses.",
+            },
+            "enabled": {
+                "type": "boolean",
+                "description": "Whether the skill is active.",
+            },
+        },
+        "required": ["skill_id", "name", "description", "instructions"],
+        "additionalProperties": False,
+    },
+}
+
+LIST_SKILLS_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "list_skills",
+    "description": "List all installed modular skills, their descriptions, and slash commands.",
+    "parameters": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": False,
+    },
+}
+
+DELETE_SKILL_TOOL_DEFINITION = {
+    "type": "function",
+    "name": "delete_skill",
+    "description": "Delete a modular skill by its ID.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "skill_id": {
+                "type": "string",
+                "description": "The skill ID to delete.",
+            }
+        },
+        "required": ["skill_id"],
+        "additionalProperties": False,
+    },
+}
+
 
 class ResponsesRunner:
     def __init__(self, hindsight: Optional[HindsightClient] = None):
@@ -568,6 +730,15 @@ class ResponsesRunner:
             tools.append(GMAIL_LIST_UNREAD_TOOL_DEFINITION)
             tools.append(GMAIL_CREATE_DRAFT_TOOL_DEFINITION)
             tools.append(GMAIL_SEND_EMAIL_TOOL_DEFINITION)
+
+        # Phase 5: Proactive Scheduling and Skills tools
+        tools.append(CREATE_SCHEDULED_EVENT_TOOL_DEFINITION)
+        tools.append(LIST_SCHEDULED_EVENTS_TOOL_DEFINITION)
+        tools.append(DELETE_SCHEDULED_EVENT_TOOL_DEFINITION)
+        tools.append(CREATE_OR_UPDATE_SKILL_TOOL_DEFINITION)
+        tools.append(LIST_SKILLS_TOOL_DEFINITION)
+        tools.append(DELETE_SKILL_TOOL_DEFINITION)
+
 
         full_assistant_text = ""
         total_usage: Dict[str, Any] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
@@ -1400,6 +1571,151 @@ class ResponsesRunner:
                     yield {
                         "event": "tool_done",
                         "data": json.dumps({"tool": "gmail_send_email", "result": f"Staged: {subject}"}),
+                    }
+
+                elif fn_name == "create_scheduled_event":
+                    name = parsed_args.get("name", "Scheduled Event")
+                    event_type = parsed_args.get("event_type", "one_shot")
+                    prompt_str = parsed_args.get("prompt", "")
+                    cron_expr = parsed_args.get("cron_expression")
+                    run_at = parsed_args.get("run_at")
+                    skill_id = parsed_args.get("skill_id")
+                    tz_str = get_user_timezone_str()
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": f"Scheduling {event_type} event: {name}"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "create_scheduled_event", "query": f"{event_type}: {name}"}),
+                    }
+
+                    next_run_iso = compute_next_run(cron_expr=cron_expr, run_at=run_at, timezone_str=tz_str)
+                    created = await loop.run_in_executor(
+                        None,
+                        db_create_scheduled_event,
+                        name,
+                        event_type,
+                        prompt_str,
+                        cron_expr,
+                        run_at,
+                        tz_str,
+                        skill_id,
+                        session_id,
+                        "active",
+                        next_run_iso,
+                    )
+                    tool_output = json.dumps({
+                        "status": "created",
+                        "event": created,
+                        "next_run_at": next_run_iso,
+                        "timezone": tz_str,
+                    })
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "create_scheduled_event", "result": f"Scheduled for {next_run_iso}"}),
+                    }
+
+                elif fn_name == "list_scheduled_events":
+                    st = parsed_args.get("status")
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Listing scheduled events"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "list_scheduled_events", "query": st or "all"}),
+                    }
+                    events = await loop.run_in_executor(None, db_list_scheduled_events, st)
+                    tool_output = json.dumps({"count": len(events), "events": events})
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "list_scheduled_events", "result": f"Found {len(events)} events"}),
+                    }
+
+                elif fn_name == "delete_scheduled_event":
+                    ev_id = parsed_args.get("event_id", "")
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": f"Deleting scheduled event {ev_id}"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "delete_scheduled_event", "query": ev_id}),
+                    }
+                    deleted = await loop.run_in_executor(None, db_delete_scheduled_event, ev_id)
+                    tool_output = json.dumps({"event_id": ev_id, "deleted": deleted})
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "delete_scheduled_event", "result": "Deleted" if deleted else "Not found"}),
+                    }
+
+                elif fn_name == "create_or_update_skill":
+                    sk_id = parsed_args.get("skill_id", "")
+                    sk_name = parsed_args.get("name", "")
+                    sk_desc = parsed_args.get("description", "")
+                    sk_instr = parsed_args.get("instructions", "")
+                    sk_slash = parsed_args.get("slash_command")
+                    sk_tools = parsed_args.get("allowed_tools")
+                    sk_en = parsed_args.get("enabled", True)
+
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": f"Saving skill: {sk_name}"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "create_or_update_skill", "query": sk_id}),
+                    }
+                    saved_skill = await loop.run_in_executor(
+                        None,
+                        sm_create_or_update_skill,
+                        sk_id,
+                        sk_name,
+                        sk_desc,
+                        sk_instr,
+                        sk_en,
+                        sk_slash,
+                        sk_tools,
+                    )
+                    tool_output = json.dumps({"status": "saved", "skill": saved_skill})
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "create_or_update_skill", "result": f"Saved {sk_id}"}),
+                    }
+
+                elif fn_name == "list_skills":
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": "Listing skills"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "list_skills", "query": "all"}),
+                    }
+                    skills = await loop.run_in_executor(None, sm_list_skills)
+                    tool_output = json.dumps({"count": len(skills), "skills": skills})
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "list_skills", "result": f"Found {len(skills)} skills"}),
+                    }
+
+                elif fn_name == "delete_skill":
+                    sk_id = parsed_args.get("skill_id", "")
+                    yield {
+                        "event": "status",
+                        "data": json.dumps({"text": f"Deleting skill {sk_id}"}),
+                    }
+                    yield {
+                        "event": "tool_start",
+                        "data": json.dumps({"tool": "delete_skill", "query": sk_id}),
+                    }
+                    del_ok = await loop.run_in_executor(None, sm_delete_skill, sk_id)
+                    tool_output = json.dumps({"skill_id": sk_id, "deleted": del_ok})
+                    yield {
+                        "event": "tool_done",
+                        "data": json.dumps({"tool": "delete_skill", "result": "Deleted" if del_ok else "Not found"}),
                     }
 
                 else:

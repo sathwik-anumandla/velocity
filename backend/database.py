@@ -7,6 +7,7 @@ Temporary sessions are ephemeral and intentionally NOT persisted here.
 import os
 import re
 import json
+import uuid
 import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone
@@ -200,6 +201,28 @@ def init_db() -> None:
     """)
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_staged_actions_session ON staged_actions(session_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_staged_actions_status ON staged_actions(status);")
+
+    # 8. Scheduled Events table for proactive reminders and recurring crons (Phase 5)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS scheduled_events (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        event_type TEXT NOT NULL CHECK(event_type IN ('recurring', 'one_shot')),
+        cron_expression TEXT,
+        run_at TEXT,
+        timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+        prompt TEXT NOT NULL,
+        skill_id TEXT,
+        session_id TEXT NOT NULL DEFAULT 'main',
+        status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'paused', 'completed', 'cancelled')),
+        last_run_at TEXT,
+        next_run_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_scheduled_events_next_run ON scheduled_events(next_run_at, status);")
 
     conn.commit()
     conn.close()
@@ -1071,4 +1094,144 @@ def update_staged_action_message_id(action_id: str, message_id: str) -> None:
     """, (message_id, now, action_id))
     conn.commit()
     conn.close()
+
+
+# ==============================================================================
+# Phase 5: Scheduled Events CRUD (Proactive Engine)
+# ==============================================================================
+
+def create_scheduled_event(
+    name: str,
+    event_type: str,
+    prompt: str,
+    cron_expression: Optional[str] = None,
+    run_at: Optional[str] = None,
+    timezone_str: str = "Asia/Kolkata",
+    skill_id: Optional[str] = None,
+    session_id: str = "main",
+    status: str = "active",
+    next_run_at: Optional[str] = None,
+    event_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Creates a new scheduled event (recurring cron or one-shot reminder).
+    """
+    if not event_id:
+        event_id = f"sched_{uuid.uuid4().hex[:8]}"
+
+    now = datetime.now(timezone.utc).isoformat()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    INSERT INTO scheduled_events (
+        id, name, event_type, cron_expression, run_at, timezone, prompt,
+        skill_id, session_id, status, last_run_at, next_run_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?);
+    """, (
+        event_id, name, event_type, cron_expression, run_at, timezone_str,
+        prompt, skill_id, session_id, status, next_run_at, now, now
+    ))
+    conn.commit()
+    conn.close()
+    return get_scheduled_event(event_id) or {}
+
+
+def get_scheduled_event(event_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a single scheduled event by ID.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM scheduled_events WHERE id = ?;", (event_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    return None
+
+
+def update_scheduled_event(event_id: str, **kwargs) -> Optional[Dict[str, Any]]:
+    """
+    Updates fields of an existing scheduled event.
+    """
+    allowed_fields = {
+        "name", "event_type", "cron_expression", "run_at", "timezone",
+        "prompt", "skill_id", "session_id", "status", "last_run_at", "next_run_at"
+    }
+    updates = {k: v for k, v in kwargs.items() if k in allowed_fields}
+    if not updates:
+        return get_scheduled_event(event_id)
+
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+    values = list(updates.values())
+    values.append(event_id)
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE scheduled_events SET {set_clause} WHERE id = ?;", tuple(values))
+    conn.commit()
+    conn.close()
+    return get_scheduled_event(event_id)
+
+
+def list_scheduled_events(
+    status: Optional[str] = None,
+    event_type: Optional[str] = None,
+    session_id: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Lists scheduled events matching optional filters.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = "SELECT * FROM scheduled_events WHERE 1=1"
+    params: List[Any] = []
+    if status:
+        query += " AND status = ?"
+        params.append(status)
+    if event_type:
+        query += " AND event_type = ?"
+        params.append(event_type)
+    if session_id:
+        query += " AND session_id = ?"
+        params.append(session_id)
+    query += " ORDER BY next_run_at ASC, created_at DESC;"
+
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def delete_scheduled_event(event_id: str) -> bool:
+    """
+    Deletes a scheduled event.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM scheduled_events WHERE id = ?;", (event_id,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def get_due_scheduled_events(as_of_iso: str) -> List[Dict[str, Any]]:
+    """
+    Retrieves all active scheduled events where next_run_at <= as_of_iso.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT * FROM scheduled_events
+    WHERE status = 'active'
+      AND next_run_at IS NOT NULL
+      AND next_run_at <= ?
+    ORDER BY next_run_at ASC;
+    """, (as_of_iso,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
 

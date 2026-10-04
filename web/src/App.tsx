@@ -54,7 +54,7 @@ export function App() {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<'general' | 'plugins' | 'memory'>('plugins');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'plugins' | 'memory' | 'schedules' | 'skills'>('plugins');
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const isUserScrolledUpRef = useRef(false);
@@ -90,8 +90,8 @@ export function App() {
     const connectedParam = params.get('connected');
     const errorParam = params.get('error');
     if (settingsParam || connectedParam || errorParam) {
-      if (settingsParam === 'plugins' || settingsParam === 'general' || settingsParam === 'memory') {
-        setSettingsTab(settingsParam);
+      if (['plugins', 'general', 'memory', 'schedules', 'skills'].includes(settingsParam || '')) {
+        setSettingsTab(settingsParam as any);
       } else {
         setSettingsTab('plugins');
       }
@@ -102,6 +102,41 @@ export function App() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+
+  // Phase 5: Subscribe to real-time proactive events and timeline push
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/stream/events');
+      eventSource.addEventListener('proactive_event', (e) => {
+        try {
+          const payload = JSON.parse(e.data);
+          const msg = payload.message;
+          if (msg && (payload.session_id === 'main' || payload.session_id === activeSession?.id)) {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === msg.id)) return prev;
+              return [...prev, msg];
+            });
+            setTimeout(() => {
+              if (chatScrollRef.current) {
+                chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+              }
+            }, 100);
+          }
+        } catch (err) {
+          console.error('Failed to parse proactive event:', err);
+        }
+      });
+    } catch (err) {
+      console.error('Failed to connect to proactive event stream:', err);
+    }
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
+  }, [activeSession?.id]);
 
 
   // Options Popover & Toggles
