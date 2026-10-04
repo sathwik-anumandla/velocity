@@ -253,7 +253,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
         /* Main Timeline (Peer-to-Peer Capsule Layout) */
         message.isStreaming && !displayContent ? (
           /* 3-Dot Bouncing Typing Indicator for Atomic Delivery */
-          <div className="flex items-center gap-1.5 bg-[#121214] px-4 py-2.5 rounded-2xl w-fit shadow-sm">
+          <div className="flex items-center gap-1.5 bg-[#1a1a1e] px-4 py-2.5 rounded-2xl w-fit shadow-sm">
             <span
               className="w-2 h-2 rounded-full bg-neutral-400 animate-bounce"
               style={{ animationDelay: '0ms' }}
@@ -268,7 +268,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
             />
           </div>
         ) : displayContent ? (
-          <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#121214] px-4 py-2 text-neutral-100 shadow-sm border-none">
+          <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#1a1a1e] px-4 py-2.5 text-neutral-100 shadow-sm border-none">
             {/* Proactive Glowing Routine Header */}
             {routine && (
               <div
