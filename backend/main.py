@@ -533,6 +533,10 @@ async def get_session_details(session_id: str = Path(...)):
     Get session metadata and all historical messages.
     """
     session = db_get_session(session_id)
+    if not session and session_id == "main":
+        init_db()
+        session = db_get_session("main")
+
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 

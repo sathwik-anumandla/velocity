@@ -283,7 +283,30 @@ export function App() {
       setMessages(history);
       setTimeout(() => scrollToBottom(true), 50);
     } catch (err) {
-      console.error('Failed to load session messages:', err);
+      console.error(`Failed to load session messages for '${target}':`, err);
+      if (target !== 'main') {
+        localStorage.setItem('velocity-active-session', 'main');
+        setCurrentSessionId('main');
+        setActiveThread(null);
+        try {
+          const { session, messages: history } = await api.getSessionMessages('main');
+          if (session) {
+            setActiveSession(session);
+            setSelectedModel(session.model || 'gpt-5.4-mini');
+            setThinkingEffort(session.thinking_effort || 'medium');
+            setRecallBudget(session.recall_budget || 'medium');
+            setVerbosity(session.verbosity || 'low');
+          } else {
+            setActiveSession(null);
+          }
+          setMessages(history);
+          setTimeout(() => scrollToBottom(true), 50);
+        } catch {
+          setMessages([]);
+          setActiveSession(null);
+        }
+        return;
+      }
       setMessages([]);
       setActiveSession(null);
     }
@@ -446,7 +469,7 @@ export function App() {
     }
 
     const targetSessionId = currentSessionId || 'main';
-    const isMainThread = targetSessionId === 'main';
+    const isMainThread = targetSessionId === 'main' || (!activeThread && !activeSession?.is_thread);
 
     const userMsgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `user-${Date.now()}`;
     const asstMsgId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `asst-${Date.now()}`;
@@ -1030,7 +1053,7 @@ export function App() {
                       )}
                       <ChatMessageView
                         message={msg}
-                        isThread={currentSessionId !== 'main'}
+                        isThread={Boolean(activeThread) || Boolean(activeSession?.is_thread)}
                         onEditAndResend={handleEditAndResend}
                         onRegenerate={handleRegenerate}
                         onOpenThread={(threadId) => handleSelectSession(threadId)}

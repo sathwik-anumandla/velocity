@@ -1,5 +1,17 @@
-FROM python:3.11-slim
+# ==============================================================================
+# Multi-Stage Build: Compiles React frontend and bundles with FastAPI backend
+# ==============================================================================
 
+# Stage 1: Build Web Frontend Assets
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/web
+COPY web/package*.json ./
+RUN npm install
+COPY web/ ./
+RUN npm run build
+
+# Stage 2: Python Backend Runtime
+FROM python:3.11-slim
 WORKDIR /app
 
 # Install runtime dependencies (sqlite3, curl for healthchecks, DejaVu fonts for PDF engine)
@@ -15,6 +27,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Copy compiled frontend from builder stage into /app/web/dist
+COPY --from=frontend-builder /app/web/dist /app/web/dist
+
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
