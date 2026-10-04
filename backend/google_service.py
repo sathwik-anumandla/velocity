@@ -54,6 +54,15 @@ class GoogleWorkspaceService:
         Loads Google OAuth client configuration from environment variables
         or data/credentials/credentials.json.
         """
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=True)
+            env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+            if os.path.isfile(env_file):
+                load_dotenv(env_file, override=True)
+        except Exception as e:
+            logger.debug(f"dotenv reload exception: {e}")
+
         client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
         client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
         redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/auth/google/callback").strip()

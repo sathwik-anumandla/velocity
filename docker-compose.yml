@@ -73,6 +73,9 @@ services:
       - SQLITE_DB_PATH=/app/data/velocity.db
       - NIGHTLY_DREAM_UTC_HOUR=${NIGHTLY_DREAM_UTC_HOUR:-23}
       - NIGHTLY_DREAM_UTC_MINUTE=${NIGHTLY_DREAM_UTC_MINUTE:-0}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:8000/api/auth/google/callback}
     depends_on:
       - hindsight
 
