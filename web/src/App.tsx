@@ -4,9 +4,11 @@ import {
   Square,
   ArrowDown,
   ArrowLeft,
-  GitBranch,
+  Layers,
   Sparkles,
   Plus,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import type {
   ChatMessage,
@@ -27,7 +29,7 @@ import { NavigationRail } from './components/NavigationRail';
 import { OptionsMenu } from './components/OptionsMenu';
 import { ChatMessageView } from './components/ChatMessageView';
 import { ArtifactCanvas } from './components/ArtifactCanvas';
-import { SearchModal } from './components/SearchModal';
+import { CommandOmnibar } from './components/CommandOmnibar';
 import { MemoryInspectorModal } from './components/MemoryInspectorModal';
 import { SettingsModal } from './components/SettingsModal';
 import { getGreetingForCurrentTime } from './utils/greetings';
@@ -108,13 +110,28 @@ export function App() {
 
   // Skills state for slash autocomplete
   const [installedSkills, setInstalledSkills] = useState<Skill[]>([]);
+  const [threads, setThreads] = useState<ThreadItem[]>([]);
   const [isSlashOpen, setIsSlashOpen] = useState(false);
   const [slashQuery, setSlashQuery] = useState('');
   const [selectedSlashIdx, setSelectedSlashIdx] = useState(0);
 
+  const loadThreads = useCallback(async () => {
+    try {
+      const res = await api.listThreads();
+      setThreads(res.threads || []);
+    } catch (e) {
+      console.error('Failed to load threads:', e);
+    }
+  }, []);
+
+  const handleToggleTheme = useCallback(() => {
+    setTheme((prev) => (prev === 'oled' ? 'dark' : prev === 'dark' ? 'light' : 'oled'));
+  }, []);
+
   useEffect(() => {
     api.listSkills().then(setInstalledSkills).catch(() => {});
-  }, []);
+    loadThreads();
+  }, [loadThreads]);
 
   // Check URL query parameters on mount (e.g. redirected from Google OAuth callback)
   useEffect(() => {
@@ -390,13 +407,14 @@ export function App() {
 
   // Slash commands list
   const slashItems = [
-    { command: '/thread', label: '/thread [topic]', desc: 'Branch a dedicated engineering workspace' },
-    { command: '/briefing', label: '/briefing', desc: 'Synthesize proactive morning briefing' },
-    { command: '/reflection', label: '/reflection', desc: 'Synthesize evening reflection routine' },
+    { command: '/thread', label: '/thread [topic]', desc: 'Branch a dedicated focus workspace', icon: Layers },
+    { command: '/briefing', label: '/briefing', desc: 'Synthesize proactive morning briefing', icon: Sun },
+    { command: '/reflection', label: '/reflection', desc: 'Synthesize evening reflection routine', icon: Moon },
     ...installedSkills.map((sk) => ({
       command: sk.slash_command || `/${sk.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
       label: sk.slash_command || `/${sk.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
       desc: sk.description,
+      icon: Sparkles,
     })),
   ].filter((item) => item.command.toLowerCase().includes(slashQuery.toLowerCase()));
 
@@ -704,7 +722,7 @@ export function App() {
         <div className="w-full mb-3 px-4 py-3 bg-[#18181b] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center flex-shrink-0">
-              <GitBranch className="w-4 h-4" />
+              <Layers className="w-4 h-4" />
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-white truncate">
@@ -719,14 +737,14 @@ export function App() {
             <button
               type="button"
               onClick={() => handleDeclineProposal(pendingProposal.messageId)}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-95 transition-all"
             >
               Continue Here
             </button>
             <button
               type="button"
               onClick={() => handleAcceptProposal(pendingProposal.messageId)}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-black hover:bg-neutral-200 transition-colors"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-black hover:bg-neutral-200 active:scale-95 transition-all"
             >
               Approve
             </button>
@@ -752,14 +770,14 @@ export function App() {
             <button
               type="button"
               onClick={() => handleRespondAction(pendingAction.id, 'decline')}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-95 transition-all"
             >
               Decline
             </button>
             <button
               type="button"
               onClick={() => handleRespondAction(pendingAction.id, 'confirm')}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-black hover:bg-neutral-200 transition-colors"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-black hover:bg-neutral-200 active:scale-95 transition-all"
             >
               Approve
             </button>
@@ -769,27 +787,35 @@ export function App() {
 
       {/* 3. Slash Command Autocomplete Palette */}
       {isSlashOpen && slashItems.length > 0 && (
-        <div className="absolute bottom-full left-0 mb-3 w-80 rounded-2xl bg-[#141416] p-2 shadow-2xl z-50 text-white select-none animate-in fade-in duration-150">
+        <div className="absolute bottom-full left-0 mb-3 w-84 rounded-2xl bg-[#141416] p-2 shadow-2xl z-50 text-white select-none animate-in fade-in duration-150">
           <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 px-3 py-1">
             Skills & Commands
           </div>
           <div className="space-y-0.5">
-            {slashItems.map((item, idx) => (
-              <div
-                key={item.command}
-                onClick={() => {
-                  setInputValue(`${item.command} `);
-                  setIsSlashOpen(false);
-                  textareaRef.current?.focus();
-                }}
-                className={`p-2.5 rounded-xl cursor-pointer transition-colors ${
-                  idx === selectedSlashIdx ? 'bg-[#222227]' : 'hover:bg-[#1a1a1e]'
-                }`}
-              >
-                <div className="text-xs font-semibold text-white">{item.label}</div>
-                <div className="text-[11px] text-neutral-400 mt-0.5 truncate">{item.desc}</div>
-              </div>
-            ))}
+            {slashItems.map((item, idx) => {
+              const IconComp = (item as any).icon || Sparkles;
+              return (
+                <div
+                  key={item.command}
+                  onClick={() => {
+                    setInputValue(`${item.command} `);
+                    setIsSlashOpen(false);
+                    textareaRef.current?.focus();
+                  }}
+                  className={`flex items-center gap-2.5 p-2 rounded-xl cursor-pointer active:scale-[0.98] transition-all ${
+                    idx === selectedSlashIdx ? 'bg-[#222227] text-white' : 'text-neutral-300 hover:bg-[#1a1a1e]'
+                  }`}
+                >
+                  <div className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center shrink-0 text-neutral-400">
+                    <IconComp className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-semibold text-white">{item.label}</div>
+                    <div className="text-[11px] text-neutral-400 truncate">{item.desc}</div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -815,7 +841,7 @@ export function App() {
           type="button"
           onClick={() => setIsOptionsOpen(!isOptionsOpen)}
           title="Configure Effort, Recall & Model"
-          className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-[#1e1e22] text-neutral-300 hover:text-white hover:bg-[#252528] transition-all"
+          className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-[#1e1e22] text-neutral-300 hover:text-white hover:bg-[#252528] active:scale-95 transition-all"
         >
           <Plus
             className={`w-4 h-4 transition-transform duration-150 ${
@@ -882,7 +908,7 @@ export function App() {
             type="button"
             onClick={handleStopStreaming}
             title="Stop generating"
-            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-white text-black hover:opacity-90 transition-opacity"
+            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-white text-black hover:opacity-90 active:scale-95 transition-all"
           >
             <Square className="w-3.5 h-3.5 fill-current" />
           </button>
@@ -892,7 +918,7 @@ export function App() {
             onClick={() => handleSendMessage()}
             disabled={!inputValue.trim()}
             title="Send message"
-            className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${
+            className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 active:scale-95 transition-all ${
               inputValue.trim()
                 ? 'bg-white text-black hover:opacity-90'
                 : 'bg-[#1e1e22] text-neutral-600 cursor-not-allowed'
@@ -922,7 +948,7 @@ export function App() {
           setIsSettingsOpen(true);
         }}
         theme={theme}
-        onToggleTheme={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+        onToggleTheme={handleToggleTheme}
         isBackendOnline={isBackendOnline}
         healthDetails={healthDetails}
       />
@@ -937,14 +963,14 @@ export function App() {
               <button
                 type="button"
                 onClick={handleExitThread}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-[#141416] transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-[#141416] active:scale-95 transition-all"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Main Timeline</span>
               </button>
 
               <div className="flex items-center gap-2">
-                <GitBranch className="w-4 h-4 text-sky-400" />
+                <Layers className="w-4 h-4 text-sky-400" />
                 <h2 className="text-sm font-semibold text-white truncate max-w-[280px] sm:max-w-md">
                   {activeThread.name}
                 </h2>
@@ -1052,12 +1078,27 @@ export function App() {
         onWidthChange={setCanvasWidth}
       />
 
-      {/* Global In-UI Search Modal (Cmd+K) */}
-      <SearchModal
+      {/* Global In-UI Command Omnibar (Cmd+K) */}
+      <CommandOmnibar
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         onSelectSession={handleSelectSession}
         onSearch={api.searchMessages}
+        onTriggerRoutine={(routine) => {
+          if (routine === 'briefing') {
+            handleSendMessage('Generate my morning briefing.');
+          } else {
+            handleSendMessage('Synthesize my evening reflection.');
+          }
+        }}
+        onOpenSettings={() => {
+          setSettingsTab('general');
+          setIsSettingsOpen(true);
+        }}
+        onOpenMemoryInspector={() => setIsMemoryInspectorOpen(true)}
+        onToggleCanvas={() => setIsCanvasOpen((prev) => !prev)}
+        onToggleTheme={handleToggleTheme}
+        threads={threads}
       />
 
       {/* Hindsight Memory Inspector Modal (Cmd+M) */}

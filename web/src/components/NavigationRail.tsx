@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import type { FC, MouseEvent } from 'react';
 import {
-  GitBranch,
+  Layers,
   Search,
-  Link2,
-  Clock,
+  Compass,
+  History,
   X,
   ExternalLink,
-  Settings,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type { ActiveFlyout, ThreadItem, NavigationLink, ChronologyEvent } from '../types';
 import * as api from '../api';
@@ -170,13 +170,13 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             type="button"
             onClick={() => onSelectFlyout(activeFlyout === 'threads' ? 'none' : 'threads')}
             title="Side Chats"
-            className={`relative w-11 h-11 rounded-2xl flex items-center justify-center transition-colors ${
+            className={`relative w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-all duration-150 ${
               activeFlyout === 'threads'
-                ? 'bg-[#1e1e22] text-white'
+                ? 'bg-[#1e1e22] text-white shadow-sm'
                 : 'text-neutral-400 hover:text-white hover:bg-[#141416]'
             }`}
           >
-            <GitBranch className="w-5 h-5" />
+            <Layers className="w-5 h-5" />
             {threads.length > 0 && (
               <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-sky-400 ring-2 ring-[#000000]" />
             )}
@@ -187,9 +187,9 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             type="button"
             onClick={() => onSelectFlyout(activeFlyout === 'search' ? 'none' : 'search')}
             title="Search Messages"
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-colors ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-all duration-150 ${
               activeFlyout === 'search'
-                ? 'bg-[#1e1e22] text-white'
+                ? 'bg-[#1e1e22] text-white shadow-sm'
                 : 'text-neutral-400 hover:text-white hover:bg-[#141416]'
             }`}
           >
@@ -201,13 +201,13 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             type="button"
             onClick={() => onSelectFlyout(activeFlyout === 'links' ? 'none' : 'links')}
             title="Shared Links"
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-colors ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-all duration-150 ${
               activeFlyout === 'links'
-                ? 'bg-[#1e1e22] text-white'
+                ? 'bg-[#1e1e22] text-white shadow-sm'
                 : 'text-neutral-400 hover:text-white hover:bg-[#141416]'
             }`}
           >
-            <Link2 className="w-5 h-5" />
+            <Compass className="w-5 h-5" />
           </button>
 
           {/* Chronology */}
@@ -215,13 +215,13 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             type="button"
             onClick={() => onSelectFlyout(activeFlyout === 'chronology' ? 'none' : 'chronology')}
             title="Chronology"
-            className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-colors ${
+            className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-all duration-150 ${
               activeFlyout === 'chronology'
-                ? 'bg-[#1e1e22] text-white'
+                ? 'bg-[#1e1e22] text-white shadow-sm'
                 : 'text-neutral-400 hover:text-white hover:bg-[#141416]'
             }`}
           >
-            <Clock className="w-5 h-5" />
+            <History className="w-5 h-5" />
           </button>
 
           {/* Settings */}
@@ -230,9 +230,9 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               type="button"
               onClick={onOpenSettings}
               title="Settings"
-              className="w-11 h-11 rounded-2xl flex items-center justify-center text-neutral-400 hover:text-white hover:bg-[#141416] transition-colors"
+              className="w-11 h-11 rounded-2xl flex items-center justify-center text-neutral-400 hover:text-white hover:bg-[#141416] active:scale-95 transition-all duration-150"
             >
-              <Settings className="w-5 h-5" />
+              <SlidersHorizontal className="w-5 h-5" />
             </button>
           )}
         </div>
@@ -301,7 +301,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               <div className="p-4 flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                    <GitBranch className="w-4 h-4 text-sky-400" />
+                    <Layers className="w-4 h-4 text-sky-400" />
                     Side Chats
                   </h3>
                   <p className="text-xs text-neutral-500 mt-0.5">
@@ -321,7 +321,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               <div className="flex-1 overflow-y-auto p-3 space-y-2">
                 {threads.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-48 text-center px-4">
-                    <GitBranch className="w-8 h-8 text-neutral-700 mb-2" />
+                    <Layers className="w-8 h-8 text-neutral-700 mb-2" />
                     <p className="text-xs text-neutral-400">No side chats found</p>
                     <p className="text-[11px] text-neutral-600 mt-1">
                       Type /thread [topic] in chat to branch a topic.
@@ -446,7 +446,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               <div className="p-4 flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                    <Link2 className="w-4 h-4 text-emerald-400" />
+                    <Compass className="w-4 h-4 text-emerald-400" />
                     Shared Links
                   </h3>
                   <p className="text-xs text-neutral-500 mt-0.5">
@@ -502,7 +502,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               <div className="p-4 flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-purple-400" />
+                    <History className="w-4 h-4 text-purple-400" />
                     Chronology
                   </h3>
                   <p className="text-xs text-neutral-500 mt-0.5">

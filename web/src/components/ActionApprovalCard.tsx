@@ -26,18 +26,18 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
   const body = action.parameters?.body || '';
 
   return (
-    <div className="w-full max-w-xl my-4 rounded-xl border border-zinc-800/80 bg-[#09090b] p-4 text-zinc-200 shadow-xl">
+    <div className="w-full max-w-xl my-4 rounded-2xl bg-[#141416] p-4 text-neutral-200 shadow-2xl select-none">
       {/* Header */}
-      <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800/60">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-700/60 flex items-center justify-center text-zinc-300">
+      <div className="flex items-center justify-between pb-3 mb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center shrink-0">
             <Mail className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
+            <h4 className="text-[10.5px] font-semibold uppercase tracking-wider text-neutral-400">
               Controlled Action Approval
             </h4>
-            <div className="text-sm font-medium text-zinc-100">
+            <div className="text-sm font-medium text-white">
               Send Email via Gmail
             </div>
           </div>
@@ -45,25 +45,25 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
 
         {/* Status Pill */}
         {action.status === 'executed' && (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400">
             <Check className="w-3.5 h-3.5" />
             Sent
           </span>
         )}
         {action.status === 'declined' && (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-zinc-800/80 text-zinc-400 border border-zinc-700/50">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-neutral-800 text-neutral-400">
             <X className="w-3.5 h-3.5" />
             Declined
           </span>
         )}
         {action.status === 'failed' && (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-500/15 text-red-400">
             <AlertCircle className="w-3.5 h-3.5" />
             Failed
           </span>
         )}
         {action.status === 'pending' && (
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-amber-400">
             Approval Required
           </span>
         )}
@@ -72,20 +72,20 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
       {/* Email Parameters Details */}
       <div className="space-y-2 mb-4 text-xs">
         <div className="flex items-baseline gap-2">
-          <span className="text-zinc-500 w-14 shrink-0 font-medium">To:</span>
-          <span className="font-mono text-zinc-300 select-all bg-zinc-900/60 px-2 py-0.5 rounded border border-zinc-800/50">
+          <span className="text-neutral-500 w-14 shrink-0 font-medium">To:</span>
+          <span className="font-mono text-neutral-200 select-all bg-[#1c1c1f] px-2.5 py-1 rounded-lg">
             {to}
           </span>
         </div>
         <div className="flex items-baseline gap-2">
-          <span className="text-zinc-500 w-14 shrink-0 font-medium">Subject:</span>
-          <span className="font-medium text-zinc-200 select-all">
+          <span className="text-neutral-500 w-14 shrink-0 font-medium">Subject:</span>
+          <span className="font-medium text-neutral-200 select-all">
             {subject}
           </span>
         </div>
-        <div className="flex flex-col gap-1 pt-1">
-          <span className="text-zinc-500 font-medium">Body:</span>
-          <div className="p-2.5 rounded-lg bg-[#000000] border border-zinc-800/80 text-zinc-300 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
+        <div className="flex flex-col gap-1.5 pt-1">
+          <span className="text-neutral-500 font-medium">Body:</span>
+          <div className="p-3 rounded-xl bg-[#09090b] text-neutral-300 font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap max-h-48 overflow-y-auto">
             {body}
           </div>
         </div>
@@ -93,12 +93,12 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
 
       {/* Action Footer */}
       {action.status === 'pending' && (
-        <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-zinc-800/60">
+        <div className="flex items-center justify-end gap-2.5 pt-2">
           <button
             type="button"
             disabled={isSubmitting}
             onClick={() => handleDecision('decline')}
-            className="px-3.5 py-1.5 rounded-lg border border-zinc-700/80 text-zinc-300 font-medium text-xs hover:bg-zinc-800 hover:text-white transition-colors disabled:opacity-50"
+            className="px-3.5 py-1.5 rounded-xl text-neutral-400 font-medium text-xs hover:text-white hover:bg-[#1e1e24] active:scale-95 transition-all disabled:opacity-50"
           >
             Decline
           </button>
@@ -106,7 +106,7 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
             type="button"
             disabled={isSubmitting}
             onClick={() => handleDecision('confirm')}
-            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-zinc-100 text-zinc-950 font-semibold text-xs hover:bg-white transition-colors shadow disabled:opacity-50"
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-white text-black font-semibold text-xs hover:bg-neutral-200 active:scale-95 transition-all shadow-md disabled:opacity-50"
           >
             {isSubmitting ? (
               <>
@@ -124,7 +124,7 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
       )}
 
       {action.status === 'failed' && action.result?.error && (
-        <div className="mt-2 text-xs text-red-400 bg-red-950/30 border border-red-900/50 rounded p-2">
+        <div className="mt-2 text-xs text-red-400 bg-red-950/20 rounded-xl p-2.5">
           {action.result.error}
         </div>
       )}

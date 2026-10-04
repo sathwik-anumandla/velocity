@@ -334,3 +334,41 @@
   will-change: background-position;
 }
 
+/* Kinetic Spring & Tactile Micro-Interactions */
+.btn-press {
+  transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease, opacity 150ms ease;
+}
+.btn-press:active {
+  transform: scale(0.97);
+}
+
+@keyframes subtle-glow-pulse {
+  0%, 100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 8px currentColor);
+  }
+  50% {
+    opacity: 0.88;
+    filter: drop-shadow(0 0 14px currentColor);
+  }
+}
+
+.animate-subtle-glow {
+  animation: subtle-glow-pulse 3.5s ease-in-out infinite;
+}
+
+@keyframes slide-up-fade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up-fade {
+  animation: slide-up-fade 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+

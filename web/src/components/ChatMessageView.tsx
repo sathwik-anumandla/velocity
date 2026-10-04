@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FC } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Pencil, Copy, Check, RotateCcw, GitBranch, FileText } from 'lucide-react';
+import { Pencil, Copy, Check, RotateCcw, Layers, FileCode2 } from 'lucide-react';
 import type { ChatMessage, ThreadProposal, Artifact } from '../types';
 import { CodeBlock } from './CognitiveWidgets';
 
@@ -171,10 +171,10 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
       {proposal && proposal.status === 'accepted' && proposal.thread_id && (
         <div
           onClick={() => onOpenThread?.(proposal!.thread_id!)}
-          className="mb-3 flex items-center gap-3.5 bg-[#1c1c1e] hover:bg-[#252528] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
+          className="mb-3 flex items-center gap-3.5 bg-[#1c1c1e] hover:bg-[#252528] active:scale-[0.98] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
         >
           <div className="w-9 h-9 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
-            <GitBranch className="w-4 h-4" />
+            <Layers className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-white truncate">{proposal.title}</div>
@@ -187,14 +187,14 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
       {message.artifact && (
         <div
           onClick={() => onOpenArtifact?.(message.artifact!)}
-          className="mb-3 flex items-center gap-3.5 bg-[#1c1c1e] hover:bg-[#252528] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
+          className="mb-3 flex items-center gap-3.5 bg-[#1c1c1e] hover:bg-[#252528] active:scale-[0.98] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
         >
-          <div className="w-9 h-9 rounded-xl bg-rose-500/15 text-rose-400 flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
-            <FileText className="w-4 h-4" />
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
+            <FileCode2 className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-white truncate">{message.artifact.title}</div>
-            <div className="text-xs text-neutral-400">Document</div>
+            <div className="text-xs text-neutral-400">Artifact</div>
           </div>
         </div>
       )}

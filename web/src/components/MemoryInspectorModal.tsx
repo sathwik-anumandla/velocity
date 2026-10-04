@@ -161,7 +161,7 @@ export const MemoryInspectorModal: FC<MemoryInspectorModalProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-[var(--bg-sidebar)] flex-shrink-0 select-none border-b border-white/[0.04]">
+        <div className="flex items-center justify-between px-6 py-4 bg-[var(--bg-sidebar)] flex-shrink-0 select-none">
           <div className="flex items-center gap-3">
             <span
               className={`w-2.5 h-2.5 rounded-full ${
@@ -235,7 +235,7 @@ export const MemoryInspectorModal: FC<MemoryInspectorModalProps> = ({
         {/* Content Body: Sidebar + Main Viewer */}
         <div className="flex-1 flex min-h-0 overflow-hidden">
           {/* Left Column: File Tree & Navigation */}
-          <div className="w-60 sm:w-64 flex-shrink-0 bg-[var(--bg-sidebar)]/60 flex flex-col justify-between overflow-y-auto p-3 border-r border-white/[0.04]">
+          <div className="w-60 sm:w-64 flex-shrink-0 bg-[var(--bg-sidebar)]/60 flex flex-col justify-between overflow-y-auto p-3">
             <div className="space-y-4">
               {categories.map((cat) => {
                 const catFiles = tree.filter((item) => item.category === cat);
@@ -271,7 +271,7 @@ export const MemoryInspectorModal: FC<MemoryInspectorModalProps> = ({
             </div>
 
             {/* Bottom: Activity Log Tab */}
-            <div className="pt-3 mt-3 border-t border-white/[0.04]">
+            <div className="pt-3 mt-3">
               <button
                 type="button"
                 onClick={handleSelectActivity}
@@ -349,7 +349,7 @@ export const MemoryInspectorModal: FC<MemoryInspectorModalProps> = ({
             ) : (
               /* Document Markdown Reader View */
               <div className="flex-1 flex flex-col min-h-0">
-                <div className="px-6 py-3 border-b border-white/[0.04] flex items-center justify-between text-xs font-mono text-[var(--text-dim)] select-none">
+                <div className="px-6 py-3 flex items-center justify-between text-xs font-mono text-[var(--text-dim)] select-none">
                   <span>{selectedPath}</span>
                   <span>Deterministic Memory</span>
                 </div>

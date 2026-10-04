@@ -3,7 +3,7 @@ import type { FC } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
-  FileText,
+  FileCode2,
   Download,
   Copy,
   Check,
@@ -128,8 +128,8 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
       {/* Top Action & Navigation Bar */}
       <div className="flex items-center justify-between px-5 py-3.5 bg-black select-none shrink-0">
         <div className="flex items-center gap-2.5 min-w-0 pr-3">
-          <div className="p-1.5 rounded-xl bg-[#141416] text-rose-400 shrink-0">
-            <FileText className="w-4 h-4" />
+          <div className="p-1.5 rounded-xl bg-emerald-500/15 text-emerald-400 shrink-0">
+            <FileCode2 className="w-4 h-4" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -278,7 +278,7 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
                 },
                 blockquote({ children }) {
                   return (
-                    <blockquote className="border-l-2 border-neutral-700 pl-4 py-1 my-4 text-neutral-400 italic">
+                    <blockquote className="bg-[#141416] px-4 py-2.5 my-4 rounded-xl text-neutral-400 italic">
                       {children}
                     </blockquote>
                   );
