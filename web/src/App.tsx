@@ -4,7 +4,7 @@ import {
   Square,
   ArrowDown,
   ArrowLeft,
-  Layers,
+  LineSquiggle,
   Sparkles,
   Plus,
   Sun,
@@ -407,7 +407,7 @@ export function App() {
 
   // Slash commands list
   const slashItems = [
-    { command: '/thread', label: '/thread [topic]', desc: 'Branch a dedicated focus workspace', icon: Layers },
+    { command: '/thread', label: '/thread [topic]', desc: 'Branch a dedicated thread', icon: LineSquiggle },
     { command: '/briefing', label: '/briefing', desc: 'Synthesize proactive morning briefing', icon: Sun },
     { command: '/reflection', label: '/reflection', desc: 'Synthesize evening reflection routine', icon: Moon },
     ...installedSkills.map((sk) => ({
@@ -717,19 +717,19 @@ export function App() {
         isCentered ? 'max-w-2xl sm:max-w-3xl' : 'max-w-3xl'
       } flex flex-col items-center select-none`}
     >
-      {/* 1. Floating Approval Card for Side Chat Proposal */}
+      {/* 1. Floating Approval Card for Thread Proposal */}
       {pendingProposal && (
         <div className="w-full mb-3 px-4 py-3 bg-[#18181b] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center flex-shrink-0">
-              <Layers className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl bg-violet-500/15 text-violet-400 flex items-center justify-center flex-shrink-0">
+              <LineSquiggle className="w-4 h-4" />
             </div>
             <div className="min-w-0">
               <div className="text-sm font-semibold text-white truncate">
                 {pendingProposal.proposal.title}
               </div>
               <div className="text-xs text-neutral-400 truncate">
-                {pendingProposal.proposal.reason || 'Proposed Side Chat'}
+                {pendingProposal.proposal.reason || 'Proposed Thread'}
               </div>
             </div>
           </div>
@@ -939,6 +939,10 @@ export function App() {
         activeFlyout={activeFlyout}
         onSelectFlyout={setActiveFlyout}
         onSelectSession={handleSelectSession}
+        onOpenArtifact={(art) => {
+          setActiveArtifact(art);
+          setIsCanvasOpen(true);
+        }}
         onOpenMemoryInspector={() => {
           setSettingsTab('memory');
           setIsSettingsOpen(true);
@@ -958,7 +962,7 @@ export function App() {
         {/* Top Header - Bolder Centered Velocity Logo & Frictionless Thread Navigation */}
         <header className="relative z-20 h-14 bg-[#000000] flex items-center justify-between px-6 flex-shrink-0 select-none">
           {activeThread ? (
-            /* Side Chat Top Bar */
+            /* Thread Top Bar */
             <div className="flex items-center justify-between w-full">
               <button
                 type="button"
@@ -970,7 +974,7 @@ export function App() {
               </button>
 
               <div className="flex items-center gap-2">
-                <Layers className="w-4 h-4 text-sky-400" />
+                <LineSquiggle className="w-4 h-4 text-violet-400" />
                 <h2 className="text-sm font-semibold text-white truncate max-w-[280px] sm:max-w-md">
                   {activeThread.name}
                 </h2>

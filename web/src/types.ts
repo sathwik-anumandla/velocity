@@ -140,7 +140,7 @@ export interface NavigationLink {
 }
 
 export interface ChronologyEvent {
-  type: 'thread_event' | 'link_event' | 'vault_event';
+  type: 'thread_event' | 'document_event' | 'link_event' | 'vault_event';
   title: string;
   description: string;
   status?: string;
@@ -148,7 +148,7 @@ export interface ChronologyEvent {
   metadata?: Record<string, any>;
 }
 
-export type ActiveFlyout = 'none' | 'threads' | 'search' | 'links' | 'chronology';
+export type ActiveFlyout = 'none' | 'threads' | 'search' | 'documents' | 'links' | 'chronology';
 
 export interface SearchResult {
   id?: string;

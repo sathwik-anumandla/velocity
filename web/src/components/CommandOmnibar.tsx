@@ -4,7 +4,7 @@ import {
   Search,
   X,
   MessageSquare,
-  Layers,
+  LineSquiggle,
   Sparkles,
   Brain,
   SlidersHorizontal,
@@ -107,8 +107,8 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
       id: `nav-thread-${t.id}`,
       category: 'Navigation' as const,
       label: t.name,
-      sublabel: t.rollup_summary || 'Branched Side Chat',
-      icon: Layers,
+      sublabel: t.rollup_summary || 'Branched Thread',
+      icon: LineSquiggle,
       action: () => {
         onSelectSession(t.id);
         onClose();

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { FC } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Pencil, Copy, Check, RotateCcw, Layers, FileCode2 } from 'lucide-react';
+import { Pencil, Copy, Check, RotateCcw, LineSquiggle, FileCode2 } from 'lucide-react';
 import type { ChatMessage, ThreadProposal, Artifact } from '../types';
 import { CodeBlock } from './CognitiveWidgets';
 
@@ -167,18 +167,18 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
 
   return (
     <div className={`flex flex-col mb-3 group w-full ${isThread ? 'items-start' : 'items-start'}`}>
-      {/* Standalone Resource Pill for Branched Side Chat (Matching inspiration) */}
+      {/* Standalone Resource Pill for Branched Thread (Matching inspiration) */}
       {proposal && proposal.status === 'accepted' && proposal.thread_id && (
         <div
           onClick={() => onOpenThread?.(proposal!.thread_id!)}
           className="mb-3 flex items-center gap-3.5 bg-[#1c1c1e] hover:bg-[#252528] active:scale-[0.98] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
         >
-          <div className="w-9 h-9 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
-            <Layers className="w-4 h-4" />
+          <div className="w-9 h-9 rounded-xl bg-violet-500/15 text-violet-400 flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
+            <LineSquiggle className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
             <div className="text-sm font-semibold text-white truncate">{proposal.title}</div>
-            <div className="text-xs text-neutral-400">Side Chat</div>
+            <div className="text-xs text-neutral-400">Thread</div>
           </div>
         </div>
       )}

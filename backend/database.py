@@ -650,7 +650,7 @@ def get_chronology_events(limit: int = 50) -> List[Dict[str, Any]]:
         events.append({
             "type": "thread_event",
             "title": f"Thread: {t['name']}",
-            "description": t["rollup_summary"] or f"Side chat status: {t['status']}",
+            "description": t["rollup_summary"] or f"Thread status: {t['status']}",
             "status": t["status"],
             "timestamp": t["updated_at"] or t["created_at"],
             "metadata": {"thread_id": t["id"]},
@@ -667,7 +667,31 @@ def get_chronology_events(limit: int = 50) -> List[Dict[str, Any]]:
             "metadata": {"url": l["url"], "session_id": l["session_id"]},
         })
 
-    # 3. Vault activity log entries
+    # 3. Artifact / Document events
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT id, session_id, title, artifact_type, version, summary, created_at, updated_at
+        FROM artifacts
+        ORDER BY created_at DESC
+        LIMIT ?
+        """, (limit,))
+        artifacts = cursor.fetchall()
+        conn.close()
+
+        for a in artifacts:
+            events.append({
+                "type": "document_event",
+                "title": f"Document: {a['title']}",
+                "description": a["summary"] or f"Version {a.get('version', 1)} ({a.get('artifact_type', 'document')})",
+                "timestamp": a["updated_at"] or a["created_at"],
+                "metadata": {"artifact_id": a["id"], "session_id": a["session_id"]},
+            })
+    except Exception:
+        pass
+
+    # 4. Vault activity log entries
     try:
         from backend.vault import get_activity_log
         vault_logs = get_activity_log(limit=limit)
