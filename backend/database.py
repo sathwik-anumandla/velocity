@@ -79,6 +79,8 @@ def init_db() -> None:
         cursor.execute("ALTER TABLE sessions ADD COLUMN status TEXT NOT NULL DEFAULT 'active';")
     if "rollup_summary" not in existing_cols:
         cursor.execute("ALTER TABLE sessions ADD COLUMN rollup_summary TEXT DEFAULT NULL;")
+    if "summarized_through" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN summarized_through TEXT DEFAULT NULL;")
 
     # 2. Messages table
     cursor.execute("""
@@ -373,6 +375,9 @@ def truncate_messages_from(session_id: str, from_message_id: str) -> int:
         (session_id, target_ts),
     )
     deleted_count = cursor.rowcount
+    cursor.execute("UPDATE sessions SET summary=NULL, summarized_through=NULL WHERE id=?", (session_id,))
+    if cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chat_turns'").fetchone():
+        cursor.execute("DELETE FROM chat_turns WHERE session_id=? AND (id NOT IN (SELECT id FROM messages) OR assistant_id NOT IN (SELECT id FROM messages))", (session_id,))
     conn.commit()
     conn.close()
     return deleted_count
@@ -722,7 +727,7 @@ def get_messages(session_id: str, limit: Optional[int] = None) -> List[Dict[str,
         """
         params = [session_id, limit]
     else:
-        query = "SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC"
+        query = "SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC, rowid ASC"
         params = [session_id]
 
     cursor.execute(query, tuple(params))
@@ -1257,5 +1262,3 @@ def get_due_scheduled_events(as_of_iso: str) -> List[Dict[str, Any]]:
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
-
-

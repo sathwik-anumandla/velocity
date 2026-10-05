@@ -3,7 +3,7 @@ Velocity Prompt Composition and Summarization Engine
 Strictly follows the prompt caching order:
 system prompt -> windowed conversation history -> recall results -> new user message
 
-Implements the 5-tier summarization waterfall preserving the last 6 messages verbatim.
+Composes incremental summaries with an explicitly retained, unsummarized history tail.
 """
 
 import os
@@ -11,7 +11,6 @@ import json
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
-import requests
 
 # Base directory (project root)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -188,42 +187,19 @@ def generate_summary(
         "Be compact and objective.\n\n" + "\n".join(convo_text)
     )
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": cheap_model,
-        "input": prompt,
-        "max_output_tokens": 1000,
-    }
+    from openai import OpenAI
+    from backend.usage import call_chat_completion
 
     try:
-        resp = requests.post(f"{base_url}/responses", json=payload, headers=headers, timeout=20)
-        if resp.status_code == 200:
-            data = resp.json()
-            # Extract output text from responses API format
-            output_items = data.get("output", [])
-            for item in output_items:
-                if item.get("type") == "message":
-                    contents = item.get("content", [])
-                    for c in contents:
-                        if c.get("type") == "output_text":
-                            return c.get("text", "").strip()
-        # Fallback to chat completions if responses endpoint fails
-        chat_payload = {
-            "model": cheap_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "max_tokens": 1000,
-        }
-        resp2 = requests.post(f"{base_url}/chat/completions", json=chat_payload, headers=headers, timeout=20)
-        if resp2.status_code == 200:
-            d2 = resp2.json()
-            return d2["choices"][0]["message"]["content"].strip()
+        client = OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
+        response = call_chat_completion(
+            client, "summary", model=cheap_model,
+            messages=[{"role": "user", "content": prompt}],
+            max_completion_tokens=1000,
+        )
+        return (response.choices[0].message.content or "").strip() or existing_summary
     except Exception:
-        pass
-
-    return existing_summary
+        return existing_summary
 
 
 def compose_responses_input(
@@ -324,21 +300,22 @@ def compose_responses_input(
         )
 
     # Inject deterministic memory vault context (profile, preferences, active context, dossiers index)
+    volatile_context = ""
     try:
         core_vault_context = get_core_context()
         if core_vault_context:
-            instructions += f"\n\n{core_vault_context}"
+            volatile_context = core_vault_context
     except Exception as e:
         # Fallback to hot mental models if vault read fails
         if hot_memory:
             user_persona = hot_memory.get("user-persona")
             if user_persona and user_persona.strip():
-                instructions += (
+                volatile_context += (
                     f"\n\n[Persistent Memory - User Persona & Philosophy]:\n{user_persona.strip()}"
                 )
             current_context = hot_memory.get("current-context")
             if current_context and current_context.strip():
-                instructions += (
+                volatile_context += (
                     f"\n\n[Persistent Memory - Current Context & Open Loops]:\n{current_context.strip()}"
                 )
 
@@ -385,9 +362,7 @@ def compose_responses_input(
             "content": f"[Conversation Summary of earlier turns]:\n{current_summary.strip()}",
         })
 
-    # Windowed tail: 16 turns for main lifelong timeline, up to 30 turns for deep threads
-    window_size = 30 if is_thread else 16
-    tail = messages[-window_size:] if len(messages) > window_size else messages
+    tail = messages
     for msg in tail:
         role = msg.get("role", "user")
         content = msg.get("content", "")
@@ -397,6 +372,9 @@ def compose_responses_input(
                 "role": role,
                 "content": content,
             })
+
+    if volatile_context:
+        input_items.append({"role": "system", "content": volatile_context})
 
     # 3. Active skill procedural instructions (if triggered via slash command)
     if active_skill_prompt:

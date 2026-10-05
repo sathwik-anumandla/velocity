@@ -384,6 +384,15 @@ class ProactiveScheduler:
             history_messages = await asyncio.to_thread(get_messages, session_id)
             session_data = await asyncio.to_thread(get_session, session_id)
             current_summary = session_data.get("summary") if session_data else None
+            watermark = session_data.get("summarized_through") if session_data else None
+            if watermark:
+                covered = next((index for index, message in enumerate(history_messages) if message["id"] == watermark), None)
+                if covered is not None:
+                    history_messages = history_messages[covered + 1:]
+            else:
+                current_summary = None
+            if sum(len(message.get("content", "").encode("utf-8")) for message in history_messages) > int(os.getenv("CONTEXT_MAX_BYTES", "200000")):
+                raise ValueError("Scheduled conversation exceeds the context budget; send a chat turn to summarize it first")
 
             instructions, input_items = compose_responses_input(
                 messages=history_messages,
@@ -402,6 +411,7 @@ class ProactiveScheduler:
             staged_action_payload = None
 
             async for chunk in runner.stream_turn(
+                source="scheduled",
                 instructions=instructions,
                 input_items=input_items,
                 session_id=session_id,
@@ -409,10 +419,12 @@ class ProactiveScheduler:
                 verbosity="medium",
             ):
                 event_type = chunk.get("event")
+                if event_type == "error":
+                    raise RuntimeError(json.loads(chunk.get("data", "{}")).get("error", "Scheduled response failed"))
                 if event_type == "delta":
                     try:
                         d = json.loads(chunk.get("data", "{}"))
-                        assistant_text += d.get("delta", "")
+                        assistant_text += d.get("text", "")
                     except Exception:
                         pass
                 elif event_type == "done":

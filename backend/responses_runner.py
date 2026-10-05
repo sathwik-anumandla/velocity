@@ -18,6 +18,7 @@ import asyncio
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from dotenv import load_dotenv
 import openai
+from backend.usage import reserve_call, finish_call, mark_call
 from backend.tavily_tool import TavilySearchTool, TAVILY_TOOL_DEFINITION
 from backend.hindsight import HindsightClient
 from backend.database import (
@@ -640,10 +641,11 @@ class ResponsesRunner:
     def __init__(self, hindsight: Optional[HindsightClient] = None):
         self.api_key = os.getenv("OPENAI_API_KEY", "").strip()
         self.base_url = (os.getenv("OPENAI_BASE_URL", "") or "https://api.openai.com/v1").strip().rstrip("/")
-        self.model = os.getenv("LLM_MODEL_ID", "gpt-5.6-luna").strip()
-        self.client = openai.OpenAI(
+        self.model = os.getenv("LLM_MODEL_ID", "gpt-5.4-mini").strip()
+        self.client = openai.AsyncOpenAI(
             api_key=self.api_key,
             base_url=self.base_url,
+            max_retries=0,
         )
         self.tavily = TavilySearchTool()
         self.hindsight = hindsight or HindsightClient()
@@ -677,6 +679,7 @@ class ResponsesRunner:
         is_temporary: bool = False,
         is_thread: bool = False,
         max_tool_hops: int = 5,
+        source: str = "chat",
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Executes a multi-turn loop with the Responses API and streams buffered deltas.
@@ -690,7 +693,7 @@ class ResponsesRunner:
         if active_api_key != self.api_key or active_base_url != self.base_url:
             self.api_key = active_api_key
             self.base_url = active_base_url
-            self.client = openai.OpenAI(api_key=self.api_key, base_url=self.base_url)
+            self.client = openai.AsyncOpenAI(api_key=self.api_key, base_url=self.base_url, max_retries=0)
         self.model = active_model
 
         prompt_cache_key = f"temp:{session_id}" if is_temporary else session_id
@@ -751,8 +754,14 @@ class ResponsesRunner:
         for hop in range(max_tool_hops):
             # Run stream in thread pool to avoid blocking asyncio event loop
             loop = asyncio.get_running_loop()
+            max_output = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "8192"))
+            try:
+                usage_id = reserve_call(active_model, source, session_id, {"instructions": instructions, "input": current_input, "tools": tools}, max_output)
+            except Exception as error:
+                yield {"event": "error", "data": json.dumps({"error": str(error)})}
+                return
 
-            def make_stream():
+            async def make_stream():
                 # Reasoning effort & verbosity passed to Responses API
                 req_kwargs: Dict[str, Any] = {
                     "model": active_model,
@@ -760,6 +769,7 @@ class ResponsesRunner:
                     "input": current_input,
                     "prompt_cache_key": prompt_cache_key,
                     "stream": True,
+                    "max_output_tokens": max_output,
                 }
                 if tools:
                     req_kwargs["tools"] = tools
@@ -770,18 +780,22 @@ class ResponsesRunner:
 
                 logger.info(f"Invoking Responses API with model='{active_model}' (effort='{thinking_effort}', verbosity='{verbosity}', tools={[t['name'] for t in tools]})")
                 try:
-                    return self.client.responses.create(**req_kwargs)
+                    return await self.client.responses.create(**req_kwargs)
                 except Exception as err:
                     # If the model does not support 'max', gracefully fallback to 'xhigh'
                     if ("reasoning.effort" in str(err) or "unsupported_value" in str(err)) and req_kwargs.get("reasoning", {}).get("effort") == "max":
                         logger.info(f"Model '{active_model}' does not support effort='max', falling back to 'xhigh'")
                         req_kwargs["reasoning"] = {"effort": "xhigh"}
-                        return self.client.responses.create(**req_kwargs)
+                        return await self.client.responses.create(**req_kwargs)
                     raise err
 
             try:
-                stream_obj = await loop.run_in_executor(None, make_stream)
+                stream_obj = await make_stream()
+            except asyncio.CancelledError:
+                mark_call(usage_id, "unreported")
+                raise
             except Exception as e:
+                mark_call(usage_id, "failed" if isinstance(e, openai.APIStatusError) and e.status_code < 500 else "unreported")
                 logger.error(f"Error calling Responses API: {e}")
                 yield {
                     "event": "error",
@@ -790,79 +804,96 @@ class ResponsesRunner:
                 return
 
             text_buffer = ""
+            received_terminal = False
             active_tool_calls: List[Dict[str, Any]] = []
 
             # Consume stream items
-            def get_next_event(iterator):
+            async def get_next_event(iterator):
                 try:
-                    return next(iterator), False
-                except StopIteration:
+                    return await iterator.__anext__(), False
+                except StopAsyncIteration:
                     return None, True
                 except Exception as ex:
                     raise ex
 
-            iterator = iter(stream_obj)
-            while True:
-                try:
-                    event, done = await loop.run_in_executor(None, get_next_event, iterator)
-                except Exception as stream_err:
-                    logger.error(f"Error reading stream: {stream_err}")
-                    yield {
-                        "event": "error",
-                        "data": json.dumps({"error": f"Stream error: {str(stream_err)}"}),
-                    }
-                    return
-
-                if done or event is None:
-                    break
-
-                ev_type = getattr(event, "type", "")
-
-                # 1. Reasoning / Thinking indicator
-                if "reasoning" in ev_type:
-                    if not thinking_emitted:
-                        thinking_emitted = True
+            try:
+                iterator = stream_obj.__aiter__()
+                while True:
+                    try:
+                        event, done = await get_next_event(iterator)
+                    except Exception as stream_err:
+                        logger.error(f"Error reading stream: {stream_err}")
+                        if text_buffer:
+                            yield {"event": "delta", "data": json.dumps({"text": text_buffer})}
                         yield {
-                            "event": "status",
-                            "data": json.dumps({"text": "Thinking"}),
+                            "event": "error",
+                            "data": json.dumps({"error": f"Stream error: {str(stream_err)}"}),
                         }
-                        yield {
-                            "event": "thinking",
-                            "data": json.dumps({"status": "thinking"}),
-                        }
+                        return
 
-                # 2. Output text delta
-                elif ev_type == "response.output_text.delta":
-                    delta = getattr(event, "delta", "")
-                    if delta:
-                        text_buffer += delta
-                        if self._should_flush(text_buffer):
-                            full_assistant_text += text_buffer
+                    if done or event is None:
+                        break
+
+                    ev_type = getattr(event, "type", "")
+
+                    # 1. Reasoning / Thinking indicator
+                    if "reasoning" in ev_type:
+                        if not thinking_emitted:
+                            thinking_emitted = True
                             yield {
-                                "event": "delta",
-                                "data": json.dumps({"text": text_buffer}),
+                                "event": "status",
+                                "data": json.dumps({"text": "Thinking"}),
                             }
-                            text_buffer = ""
+                            yield {
+                                "event": "thinking",
+                                "data": json.dumps({"status": "thinking"}),
+                            }
 
-                # 3. Tool call detection
-                elif ev_type == "response.output_item.done":
-                    item = getattr(event, "item", None)
-                    if item and getattr(item, "type", "") == "function_call":
-                        active_tool_calls.append({
-                            "call_id": getattr(item, "call_id", ""),
-                            "name": getattr(item, "name", ""),
-                            "arguments": getattr(item, "arguments", ""),
-                        })
+                    # 2. Output text delta
+                    elif ev_type == "response.output_text.delta":
+                        delta = getattr(event, "delta", "")
+                        if delta:
+                            text_buffer += delta
+                            if self._should_flush(text_buffer):
+                                full_assistant_text += text_buffer
+                                yield {
+                                    "event": "delta",
+                                    "data": json.dumps({"text": text_buffer}),
+                                }
+                                text_buffer = ""
 
-                # 4. Completion & usage stats
-                elif ev_type in ("response.completed", "response.incomplete"):
-                    resp = getattr(event, "response", None)
-                    if resp and hasattr(resp, "usage") and resp.usage:
-                        total_usage = {
-                            "input_tokens": getattr(resp.usage, "input_tokens", 0),
-                            "output_tokens": getattr(resp.usage, "output_tokens", 0),
-                            "total_tokens": getattr(resp.usage, "total_tokens", 0),
-                        }
+                    # 3. Tool call detection
+                    elif ev_type == "response.output_item.done":
+                        item = getattr(event, "item", None)
+                        if item and getattr(item, "type", "") == "function_call":
+                            active_tool_calls.append({
+                                "call_id": getattr(item, "call_id", ""),
+                                "name": getattr(item, "name", ""),
+                                "arguments": getattr(item, "arguments", ""),
+                            })
+
+                    # 4. Completion & usage stats
+                    elif ev_type in ("response.completed", "response.incomplete"):
+                        received_terminal = True
+                        resp = getattr(event, "response", None)
+                        if resp and hasattr(resp, "usage") and resp.usage:
+                            hop_usage = finish_call(usage_id, resp.usage, getattr(resp, "id", None), getattr(resp, "model", None))
+                            for key, value in hop_usage.items():
+                                if isinstance(value, int):
+                                    total_usage[key] = total_usage.get(key, 0) + value
+                        if ev_type == "response.incomplete":
+                            if text_buffer:
+                                yield {"event": "delta", "data": json.dumps({"text": text_buffer})}
+                            yield {"event": "error", "data": json.dumps({"error": "Response interrupted by output limit. Partial text has been saved."})}
+                            return
+                    elif ev_type in ("response.failed", "error"):
+                        if text_buffer:
+                            yield {"event": "delta", "data": json.dumps({"text": text_buffer})}
+                        yield {"event": "error", "data": json.dumps({"error": "Provider failed to finish the response. Partial text has been saved."})}
+                        return
+            finally:
+                mark_call(usage_id, "unreported")
+                await stream_obj.close()
 
             # Flush remaining buffer from this stream iteration
             if text_buffer:
@@ -872,6 +903,10 @@ class ResponsesRunner:
                     "data": json.dumps({"text": text_buffer}),
                 }
                 text_buffer = ""
+
+            if not received_terminal:
+                yield {"event": "error", "data": json.dumps({"error": "Provider stream ended before completion. Partial text has been saved."})}
+                return
 
             # If no tool calls were made, we have the complete response
             if not active_tool_calls:
@@ -1734,6 +1769,9 @@ class ResponsesRunner:
                 })
 
         # Completed all iterations
+        if active_tool_calls:
+            yield {"event": "error", "data": json.dumps({"error": "Tool iteration limit reached. Partial response and completed tool actions are saved."})}
+            return
         done_payload: Dict[str, Any] = {
             "text": full_assistant_text,
             "usage": total_usage,
@@ -1750,4 +1788,3 @@ class ResponsesRunner:
             "event": "done",
             "data": json.dumps(done_payload),
         }
-

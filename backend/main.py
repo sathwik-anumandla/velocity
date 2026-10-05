@@ -11,9 +11,10 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, aclosing
 from typing import List, Dict, Any, Optional, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from backend import turns, usage
 
 from fastapi import FastAPI, HTTPException, Query, Path, Request, Response
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
@@ -138,7 +139,7 @@ def classify_and_rename_session(user_message: str, session_id: str) -> Optional[
         return None
 
     try:
-        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        client = openai.OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
         is_reasoning = any(prefix in classifier_model for prefix in ("o1", "o3", "gpt-5"))
         kwargs = {
             "model": classifier_model,
@@ -158,7 +159,7 @@ def classify_and_rename_session(user_message: str, session_id: str) -> Optional[
             kwargs["reasoning_effort"] = "low"
         else:
             kwargs["temperature"] = 0.3
-        response = client.chat.completions.create(**kwargs)
+        response = usage.call_chat_completion(client, "title", session_id, **kwargs)
         title = response.choices[0].message.content.strip().strip('"\'')
         if title:
             db_update_session(session_id, name=title)
@@ -230,7 +231,7 @@ Output your response strictly as a JSON object with this schema:
 If no updates are needed, output strictly: {{"actions": []}}
 Do not include markdown fences, backticks, or any other text outside the JSON object."""
 
-        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        client = openai.OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
         is_reasoning = any(m in cheap_model.lower() for m in ["o1", "o3", "o4", "gpt-5"])
         kwargs: Dict[str, Any] = {
             "model": cheap_model,
@@ -243,7 +244,7 @@ Do not include markdown fences, backticks, or any other text outside the JSON ob
         else:
             kwargs["temperature"] = 0.2
 
-        response = await asyncio.to_thread(client.chat.completions.create, **kwargs)
+        response = await asyncio.to_thread(usage.call_chat_completion, client, "synthesis", **kwargs)
         raw_output = response.choices[0].message.content.strip()
 
         clean_json = raw_output
@@ -361,6 +362,8 @@ async def lifespan(app: FastAPI):
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
     init_db()
+    usage.init_usage()
+    turns.init_turns()
     logger.info("Velocity Persistence initialized (SQLite + FTS5)")
 
     # Seed and bootstrap deterministic memory vault from template if not present
@@ -387,6 +390,10 @@ async def lifespan(app: FastAPI):
 
     yield
     # Shutdown
+    running_turns = list(turns.tasks.values())
+    for task in running_turns:
+        task.cancel()
+    await asyncio.gather(*running_turns, return_exceptions=True)
     proactive_scheduler.stop()
     dream_task.cancel()
     try:
@@ -547,7 +554,7 @@ async def get_session_details(session_id: str = Path(...)):
 
     enriched_messages = []
     for m in messages:
-        m_dict = dict(m)
+        m_dict = turns.enrich_message(dict(m))
         if m_dict.get("artifact_id"):
             m_dict["artifact"] = db_get_artifact(m_dict["artifact_id"])
         if m_dict["id"] in staged_by_msg:
@@ -580,7 +587,7 @@ async def get_session_messages_list(session_id: str = Path(...)):
 
     enriched_messages = []
     for m in messages:
-        m_dict = dict(m)
+        m_dict = turns.enrich_message(dict(m))
         if m_dict.get("artifact_id"):
             m_dict["artifact"] = db_get_artifact(m_dict["artifact_id"])
         if m_dict["id"] in staged_by_msg:
@@ -617,6 +624,8 @@ async def delete_session(session_id: str):
     """
     Delete a session and all its associated messages.
     """
+    if turns.session_running(session_id):
+        raise HTTPException(status_code=409, detail="Stop the running response before deleting this conversation")
     success = db_delete_session(session_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -640,6 +649,8 @@ async def truncate_session_messages(
             return {"status": "truncated", "deleted": len(msgs) - idx}
         return {"status": "truncated", "deleted": 0}
 
+    if turns.session_running(session_id):
+        raise HTTPException(status_code=409, detail="Stop the running response before editing conversation history")
     deleted_count = db_truncate_messages_from(session_id, from_message_id)
     return {"status": "truncated", "deleted": deleted_count}
 
@@ -661,14 +672,14 @@ async def search(q: str = Query(..., min_length=1, description="Search query")):
 # ==============================================================================
 @app.post("/chat/stream")
 @app.post("/api/chat/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, http_request: Request):
     """
     Per-turn loop:
     1. Unconditional sync recall from Hindsight (with sticky budget toggle).
     2. Context composition (5-tier summarization waterfall, cache-optimal order).
     3. Stream Luna via OpenAI Responses API (reasoning effort toggle, tool calls, buffered stream).
-    4. Synchronous retain after exchange (tagged with session_id, no raw search results).
-    5. Persistence to SQLite (bypassed if is_temporary is true).
+    4. Durable SQLite persistence and resumable SSE (ephemeral for temporary chats).
+    5. Background memory retain after persistence.
     """
     session_id = request.session_id
     user_message = request.message
@@ -732,27 +743,44 @@ async def chat_stream(request: ChatRequest):
         thinking_effort = session["thinking_effort"]
         verbosity = session.get("verbosity", "low")
         model = session.get("model") or request.model or os.getenv("LLM_MODEL_ID", "gpt-5.4-mini")
-        history_limit = 100 if session_id == "main" else None
-        history_messages = db_get_messages(session_id, limit=history_limit)
-        current_summary = session.get("summary")
+        history_messages = db_get_messages(session_id)
+        watermark = session.get("summarized_through")
+        if watermark:
+            covered = next((index for index, message in enumerate(history_messages) if message["id"] == watermark), None)
+            if covered is not None:
+                history_messages = history_messages[covered + 1:]
+        current_summary = session.get("summary") if watermark else None
         last_tokens = session.get("last_tokens") or 0
 
     is_thread = False
     if not is_temp:
         is_thread = bool(session and session.get("is_thread"))
 
+    turn_id = request.message_id or str(uuid.uuid4())
+    if not is_temp:
+        try:
+            turn, created = turns.claim_turn(turn_id, session_id, user_message)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error))
+        if not created:
+            try:
+                after = max(0, int(http_request.headers.get("Last-Event-ID", "0")))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid event cursor")
+            return EventSourceResponse(turns.replay_events(turn_id, after))
+
     # Renaming layer: Before sending to main model, send to classifier model to rename the chat
     # Never rename main timeline ('main') or side chats (is_thread)
     renamed_title = None
-    if not is_temp and session_id != "main" and not is_thread and (len(history_messages) == 0 or session["name"].startswith("Session ") or session["name"] in ["New Chat", "New Conversation"]):
-        renamed_title = await asyncio.to_thread(classify_and_rename_session, user_message, session_id)
-        if renamed_title and session:
-            session["name"] = renamed_title
 
     overall_memory_status = "ok"
 
     async def event_generator():
-        nonlocal overall_memory_status
+        nonlocal overall_memory_status, renamed_title
+        if not is_temp and session_id != "main" and not is_thread and (len(history_messages) == 0 or session["name"].startswith("Session ") or session["name"] in ["New Chat", "New Conversation"]):
+            renamed_title = await asyncio.to_thread(classify_and_rename_session, user_message, session_id)
+            if renamed_title and session:
+                session["name"] = renamed_title
         full_assistant_response = ""
         usage_data = {}
         thread_proposal_data = None
@@ -793,22 +821,29 @@ async def chat_stream(request: ChatRequest):
             last_msg_ts = history_messages[-1]["created_at"] if history_messages else None
             should_sum, reason = evaluate_summarization_waterfall(
                 total_turns=total_turns,
-                total_tokens=last_tokens,
+                total_tokens=sum(len(message.get("content", "").encode("utf-8")) for message in history_messages) // 3,
                 last_message_timestamp=last_msg_ts,
                 has_unsummarized_tail=True,
             )
-            if should_sum:
+            if should_sum or len(history_messages) > cutoff * 2:
                 logger.info(f"Summarization waterfall triggered: {reason}")
                 to_summarize = history_messages[:-cutoff]
                 new_summary = await asyncio.to_thread(generate_summary, local_summary, to_summarize)
-                if new_summary:
+                if new_summary and new_summary != local_summary:
                     local_summary = new_summary
                     if is_temp:
                         temp_sessions[session_id]["summary"] = new_summary
+                        temp_sessions[session_id]["messages"] = history_messages[-cutoff:]
                     else:
-                        db_update_session(session_id, summary=new_summary)
+                        with usage.transaction() as connection:
+                            connection.execute("UPDATE sessions SET summary = ?, summarized_through = ? WHERE id = ?", (new_summary, to_summarize[-1]["id"], session_id))
+                    history_messages[:] = history_messages[-cutoff:]
 
         # Compose Responses API input in strict cache-optimal order
+        context_bytes = sum(len(message.get("content", "").encode("utf-8")) for message in history_messages)
+        if context_bytes > int(os.getenv("CONTEXT_MAX_BYTES", "200000")):
+            yield {"event": "error", "data": json.dumps({"error": "Conversation exceeds the context budget and summarization did not reduce it. Check model availability; no history was discarded."})}
+            return
         instructions, input_items = compose_responses_input(
             messages=history_messages,
             current_summary=local_summary,
@@ -828,9 +863,10 @@ async def chat_stream(request: ChatRequest):
         thread_proposal_data = None
         artifact_data = None
         artifact_id = None
+        staged_action_data = None
 
         # Stream from Responses API runner
-        async for sse_item in responses_runner.stream_turn(
+        async with aclosing(responses_runner.stream_turn(
             instructions=instructions,
             input_items=input_items,
             session_id=session_id,
@@ -839,49 +875,37 @@ async def chat_stream(request: ChatRequest):
             model=model,
             is_temporary=is_temp,
             is_thread=is_thread,
-        ):
-            ev = sse_item["event"]
-            raw_data = sse_item["data"]
+        )) as model_events:
+            async for sse_item in model_events:
+                ev = sse_item["event"]
+                raw_data = sse_item["data"]
 
-            if ev == "done":
-                try:
-                    payload = json.loads(raw_data)
-                    full_assistant_response = payload.get("text", "")
-                    usage_data = payload.get("usage", {})
-                    thread_proposal_data = payload.get("thread_proposal", None)
-                    artifact_data = payload.get("artifact", None)
-                    artifact_id = payload.get("artifact_id", None)
-                    staged_action_data = payload.get("staged_action", None)
-                except Exception:
-                    pass
-            else:
-                yield {
-                    "event": ev,
-                    "data": raw_data,
-                }
+                if ev == "done":
+                    try:
+                        payload = json.loads(raw_data)
+                        full_assistant_response = payload.get("text", "")
+                        usage_data = payload.get("usage", {})
+                        thread_proposal_data = payload.get("thread_proposal", None)
+                        artifact_data = payload.get("artifact", None)
+                        artifact_id = payload.get("artifact_id", None)
+                        staged_action_data = payload.get("staged_action", None)
+                    except Exception:
+                        pass
+                else:
+                    yield {
+                        "event": ev,
+                        "data": raw_data,
+                    }
+                    if ev == "error":
+                        return
 
-        # Step 4: Retain after exchange using structured format, stable document_id & TEMPR tags
-        if not is_temp:
-            session_title = renamed_title or (session.get("name") if session else "New Chat")
-            retain_status = await asyncio.to_thread(
-                hindsight_client.retain_turn,
-                user_message=user_message,
-                assistant_response=full_assistant_response,
-                session_id=session_id,
-                session_name=session_title,
-                async_retain=True,
-            )
-            if retain_status == "degraded" or overall_memory_status == "degraded":
-                overall_memory_status = "degraded"
-            else:
-                overall_memory_status = "ok"
 
         # Step 5: Persistence
         new_total_tokens = usage_data.get("total_tokens", last_tokens)
-        now_iso = datetime.utcnow().isoformat()
+        now_iso = datetime.now(timezone.utc).isoformat()
 
-        user_msg_id = request.message_id or str(uuid.uuid4())
-        asst_msg_id = str(uuid.uuid4())
+        user_msg_id = turn_id
+        asst_msg_id = f"{turn_id}:assistant"
 
         if is_temp:
             # Ephemeral memory only
@@ -907,22 +931,8 @@ async def chat_stream(request: ChatRequest):
             temp_sessions[session_id]["last_tokens"] = new_total_tokens
         else:
             # Persistent SQLite store
-            db_add_message(
-                message_id=user_msg_id,
-                session_id=session_id,
-                role="user",
-                content=user_message,
-                memory_status=overall_memory_status,
-            )
-            db_add_message(
-                message_id=asst_msg_id,
-                session_id=session_id,
-                role="assistant",
-                content=full_assistant_response,
-                memory_status=overall_memory_status,
-                thread_proposal=json.dumps(thread_proposal_data) if thread_proposal_data else None,
-                artifact_id=artifact_id,
-            )
+            with usage.transaction() as connection:
+                connection.execute("UPDATE messages SET content = ?, memory_status = ?, thread_proposal = ?, artifact_id = ? WHERE id = ?", (full_assistant_response, overall_memory_status, json.dumps(thread_proposal_data) if thread_proposal_data else None, artifact_id, asst_msg_id))
             if artifact_id:
                 try:
                     conn = get_connection()
@@ -949,6 +959,15 @@ async def chat_stream(request: ChatRequest):
             )
 
         # Emit final completion event with message IDs, memory status, thread proposal, artifact and usage
+        if not is_temp:
+            asyncio.create_task(asyncio.to_thread(
+                hindsight_client.retain_turn,
+                user_message=user_message,
+                assistant_response=full_assistant_response,
+                session_id=session_id,
+                session_name=renamed_title or (session.get("name") if session else "New Chat"),
+                async_retain=True,
+            ))
         yield {
             "event": "complete",
             "data": json.dumps({
@@ -964,8 +983,10 @@ async def chat_stream(request: ChatRequest):
             }),
         }
 
+    if not is_temp:
+        turns.tasks[turn_id] = asyncio.create_task(turns.run_turn(turn_id, event_generator()))
     return EventSourceResponse(
-        event_generator(),
+        event_generator() if is_temp else turns.replay_events(turn_id),
         headers={
             "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
@@ -976,6 +997,61 @@ async def chat_stream(request: ChatRequest):
 # ==============================================================================
 # 4. Cognitive Memory Endpoints (Mental Models & Reflect)
 # ==============================================================================
+@app.get("/api/chat/turns/{turn_id}")
+async def get_chat_turn(turn_id: str):
+    turn = turns.get_turn(turn_id)
+    if not turn:
+        raise HTTPException(status_code=404, detail="Turn not found")
+    return turn
+
+
+@app.get("/api/chat/turns/{turn_id}/events")
+async def resume_chat_turn(turn_id: str, request: Request):
+    if not turns.get_turn(turn_id):
+        raise HTTPException(status_code=404, detail="Turn not found")
+    try:
+        after = max(0, int(request.headers.get("Last-Event-ID", "0")))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid event cursor")
+    return EventSourceResponse(turns.replay_events(turn_id, after))
+
+
+@app.post("/api/chat/turns/{turn_id}/cancel")
+async def cancel_chat_turn(turn_id: str):
+    turn = turns.get_turn(turn_id)
+    if not turn:
+        raise HTTPException(status_code=404, detail="Turn not found")
+    task = turns.tasks.get(turn_id)
+    if task:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        turns.tasks.pop(turn_id, None)
+        turns.finish_turn(turn_id, "cancelled", "Generation stopped")
+    return turns.get_turn(turn_id)
+
+
+class ModelPrices(BaseModel):
+    input: float = Field(ge=0, allow_inf_nan=False)
+    cached_input: float = Field(ge=0, allow_inf_nan=False)
+    output: float = Field(ge=0, allow_inf_nan=False)
+
+
+class UsagePricing(BaseModel):
+    prices: Dict[str, ModelPrices]
+
+
+@app.get("/api/usage")
+async def get_usage_stats():
+    return usage.usage_stats()
+
+
+@app.put("/api/usage/prices")
+async def set_usage_prices(request: UsagePricing):
+    prices = {model: rates.model_dump() for model, rates in request.prices.items()}
+    usage.update_settings(prices)
+    return usage.usage_stats()
+
+
 class ReflectRequest(BaseModel):
     query: str
     budget: Optional[Literal["low", "mid", "high"]] = "mid"
@@ -1144,10 +1220,13 @@ async def synthesize_thread_rollup(thread: Dict[str, Any], messages: List[Dict[s
         api_key = os.getenv("OPENAI_API_KEY", "").strip()
         base_url = (os.getenv("OPENAI_BASE_URL", "") or "https://api.openai.com/v1").strip().rstrip("/")
         cheap_model = (os.getenv("SYNTHESIS_MODEL_ID") or os.getenv("CLASSIFIER_MODEL_ID") or "gpt-5.4-mini").strip()
-        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+        client = openai.OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
 
         resp = await asyncio.to_thread(
-            client.chat.completions.create,
+            usage.call_chat_completion,
+            client,
+            "thread_rollup",
+            thread_id,
             model=cheap_model,
             messages=[
                 {"role": "system", "content": "You are a concise engineering synthesizer. Output strictly 2-3 sentences. No emojis."},
@@ -2052,6 +2131,3 @@ async def spa_fallback(full_path: str):
         if os.path.isfile(index_file):
             return FileResponse(index_file)
     raise HTTPException(status_code=404, detail="Not Found")
-
-
-

@@ -52,13 +52,20 @@ def _norm_recall(v: Any) -> Optional[str]:
 
 class ChatRequest(BaseModel):
     session_id: str
-    message: str
+    message: str = Field(min_length=1)
     message_id: Optional[str] = None
     recall_budget: Optional[str] = None
     thinking_effort: Optional[str] = None
     verbosity: Optional[str] = None
     model: Optional[str] = None
     is_temporary: bool = False
+
+    @field_validator("message")
+    @classmethod
+    def val_message(cls, value):
+        if not value.strip():
+            raise ValueError("Message cannot be blank")
+        return value
 
     @field_validator("model", mode="before")
     @classmethod
@@ -162,6 +169,8 @@ class MessageResponse(BaseModel):
     thread_proposal: Optional[str] = None
     artifact_id: Optional[str] = None
     artifact: Optional[Dict[str, Any]] = None
+    turn_id: Optional[str] = None
+    turn_status: Optional[str] = None
     staged_action: Optional[Dict[str, Any]] = None
 
 
@@ -350,5 +359,3 @@ class SkillUpdateRequest(BaseModel):
     allowed_tools: Optional[List[str]] = None
     memory_files: Optional[List[str]] = None
     instructions: Optional[str] = None
-
-

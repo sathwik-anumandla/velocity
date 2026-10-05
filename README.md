@@ -6,6 +6,9 @@ Velocity is a sovereign personal AI assistant and technical thought partner engi
 
 ## Architecture
 
+Usage statistics, durable chat recovery, Android artifact viewing, and related
+configuration are described in [Usage and chat recovery](docs/usage-and-recovery.md).
+
 ```text
 ┌────────────────────────────────────────────────────────┐
 │              Velocity Web Client (React)               │

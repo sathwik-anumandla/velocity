@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { UsageTab } from './UsageTab';
 import type { FC } from 'react';
 import {
   X,
@@ -40,7 +41,7 @@ import type { VaultTreeItem } from '../api';
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'general' | 'plugins' | 'memory' | 'schedules' | 'skills';
+  initialTab?: 'general' | 'plugins' | 'memory' | 'schedules' | 'skills' | 'usage';
   initialError?: string | null;
   currentModel: SupportedModel;
   onSelectModel: (model: SupportedModel) => void;
@@ -71,7 +72,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
   theme = 'dark',
   onSelectTheme,
 }) => {
-  const [activeTab, setActiveTab] = useState<'general' | 'plugins' | 'memory' | 'schedules' | 'skills'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'general' | 'plugins' | 'memory' | 'schedules' | 'skills' | 'usage'>(initialTab);
   const [searchFilter, setSearchFilter] = useState('');
 
   // Plugins state
@@ -343,6 +344,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
       group: 'Settings',
       items: [
         { id: 'general', label: 'General', icon: Sliders },
+        { id: 'usage', label: 'Usage', icon: Clock },
         { id: 'memory', label: 'Memory', icon: Brain },
       ],
     },
@@ -434,6 +436,8 @@ export const SettingsModal: FC<SettingsModalProps> = ({
               <h2 className="text-lg font-semibold text-white capitalize">
                 {activeTab === 'general'
                   ? 'General Settings'
+                  : activeTab === 'usage'
+                  ? 'Usage & Cost Estimates'
                   : activeTab === 'memory'
                   ? 'Memory Vault & Cognitive Models'
                   : activeTab === 'plugins'
@@ -454,6 +458,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
 
           {/* Body Content */}
           <div className="flex-1 overflow-y-auto space-y-6 pr-1">
+            {activeTab === 'usage' && <UsageTab />}
             {/* 1. GENERAL TAB */}
             {activeTab === 'general' && (
               <div className="space-y-6 text-xs">
