@@ -36,6 +36,14 @@ Default price references: [GPT-5.4 mini](https://developers.openai.com/api/docs/
 
 API: `GET /api/usage`, `PUT /api/usage/prices` with `{"prices": {...}}`.
 
+### Visual dashboard
+
+Both clients provide **Today / This month / All time** overview selectors, cost/token/call/savings cards, an input/output ring, cache and reasoning meters, and ranked model/activity bars. The model/activity breakdown follows the selected period. The **daily activity chart always shows the last 30 UTC days**, independently of the overview selector; choose Tokens, Cost or Calls and select a day for its exact values. Android supports tapping bars and Previous/Next day buttons; web supports keyboard-focusable bars and the same day controls. No chart library or extra model calls are needed.
+
+Provider detail gaps are shown as unavailable rather than 0%. Unknown reservations remain separate from priced spending; unpriced calls are never described as free. The ring counts only input plus output, never adding cached or reasoning subsets again. Data-loading, first-use, retry and stale-refresh states are explicit. Refresh does not discard unsaved pricing edits.
+
+Model pricing uses labeled numeric fields instead of raw JSON. Add custom model IDs, save or discard edits, or reset/remove an override to restore an available built-in/environment rate. Daily history is derived from the existing ledger, not from chat text; `daily` and per-period `breakdowns` are additive API fields. Older clients ignore them. New clients explain when an older backend does not yet provide chart data or period-specific breakdowns.
+
 ## Recovery and cancellation
 
 Persistent chats save the user message and assistant placeholder before generation.

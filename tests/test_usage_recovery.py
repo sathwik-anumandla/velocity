@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -35,6 +36,56 @@ class DatabaseFixture:
 
 
 class UsageTests(DatabaseFixture, unittest.TestCase):
+    def test_daily_history_is_zero_filled_and_does_not_double_count_reasoning(self):
+        current = datetime(2026, 10, 6, 12, tzinfo=timezone.utc)
+        with patch("backend.usage.datetime") as clock:
+            clock.now.return_value = current
+            call_id = usage.reserve_call("gpt-5.4-mini", "chat", "main", "test", 100)
+            usage.finish_call(call_id, {"input_tokens": 100, "output_tokens": 20, "output_tokens_details": {"reasoning_tokens": 10}})
+            stats = usage.usage_stats()
+        self.assertEqual(len(stats["daily"]), 30)
+        self.assertEqual(stats["daily"][0]["date"], "2026-09-07")
+        self.assertEqual(stats["daily"][-1]["date"], "2026-10-06")
+        self.assertEqual(stats["daily"][-1]["total_tokens"], 120)
+        self.assertEqual(sum(day["total_tokens"] for day in stats["daily"]), 120)
+        self.assertEqual(stats["daily"][0]["calls"], 0)
+        self.assertEqual(stats["daily"][-1]["cost_usd"], stats["today"]["cost_usd"])
+
+    def test_breakdowns_follow_utc_periods_and_keep_legacy_all_time_fields(self):
+        current = datetime(2026, 10, 6, 12, tzinfo=timezone.utc)
+        dates = ["2026-10-06T00:00:00+00:00", "2026-09-30T23:59:59+00:00", "2025-01-01T00:00:00+00:00"]
+        for date in dates:
+            call_id = usage.reserve_call("gpt-5.4-mini", "chat", "main", "test", 100)
+            usage.finish_call(call_id, {"input_tokens": 100, "output_tokens": 20})
+            connection = database.get_connection()
+            with connection:
+                connection.execute("UPDATE usage_calls SET created_at=? WHERE id=?", (date, call_id))
+            connection.close()
+        with patch("backend.usage.datetime") as clock:
+            clock.now.return_value = current
+            stats = usage.usage_stats()
+        self.assertEqual(stats["breakdowns"]["today"]["by_model"][0]["calls"], 1)
+        self.assertEqual(stats["breakdowns"]["month"]["by_source"][0]["calls"], 1)
+        self.assertEqual(stats["breakdowns"]["all_time"]["by_model"][0]["calls"], 3)
+        self.assertEqual(stats["by_model"], stats["breakdowns"]["all_time"]["by_model"])
+        self.assertEqual(sum(day["calls"] for day in stats["daily"]), 2)
+
+    def test_daily_unknown_cost_is_explained_not_counted_as_actual_spending(self):
+        call_id = usage.reserve_call("unknown-model", "scheduled", "main", "test", 100)
+        usage.finish_call(call_id, {"input_tokens": 100, "output_tokens": 20})
+        interrupted = usage.reserve_call("gpt-5.4-mini", "chat", "main", "test", 100)
+        usage.mark_call(interrupted, "unreported")
+        day = usage.usage_stats()["daily"][-1]
+        self.assertEqual(day["unpriced_calls"], 1)
+        self.assertEqual(day["unreported_calls"], 1)
+        self.assertEqual(day["total_tokens"], 120)
+        self.assertEqual(day["cost_usd"], 0)
+
+    def test_empty_dashboard_has_no_fake_usage(self):
+        stats = usage.usage_stats()
+        self.assertTrue(all(day["calls"] == 0 and day["cost_usd"] == 0 for day in stats["daily"]))
+        self.assertTrue(all(not entry["by_model"] and not entry["by_source"] for entry in stats["breakdowns"].values()))
+
     def test_cached_and_reasoning_tokens_are_not_billed_twice(self):
         call_id = usage.reserve_call("gpt-5.4-mini", "chat", "main", "test", 100)
         metrics = usage.finish_call(call_id, {

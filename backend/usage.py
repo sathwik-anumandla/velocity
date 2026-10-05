@@ -4,7 +4,7 @@ import re
 import uuid
 from openai import APIStatusError
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from backend.database import get_connection
 
@@ -164,7 +164,8 @@ def call_chat_completion(client, source, session_id=None, **kwargs):
 
 
 def usage_stats():
-    now = datetime.now(timezone.utc).isoformat()
+    current = datetime.now(timezone.utc)
+    now = current.isoformat()
     connection = get_connection()
     try:
         rows = [dict(row) for row in connection.execute("SELECT * FROM usage_calls ORDER BY created_at DESC")]
@@ -194,10 +195,29 @@ def usage_stats():
         })
         return result
 
+    def grouped(selected, field):
+        groups = {}
+        for row in selected:
+            groups.setdefault(row[field], []).append(row)
+        return [{field: name, **aggregate(values)} for name, values in sorted(groups.items())]
+
+    periods = {
+        "today": [row for row in rows if row["created_at"] >= now[:10]],
+        "month": [row for row in rows if row["created_at"] >= now[:7]],
+        "all_time": rows,
+    }
+    breakdowns = {name: {"by_model": grouped(selected, "model"), "by_source": grouped(selected, "source")} for name, selected in periods.items()}
+    daily_rows = {}
+    for row in rows:
+        daily_rows.setdefault(row["created_at"][:10], []).append(row)
+    daily = []
+    for offset in range(29, -1, -1):
+        date = (current - timedelta(days=offset)).date().isoformat()
+        values = aggregate(daily_rows.get(date, []))
+        daily.append({"date": date, **{key: values[key] for key in ("calls", "total_tokens", "cost_usd", "unpriced_calls", "unreported_calls")}})
+
     return {
-        "settings": settings(), "today": aggregate([row for row in rows if row["created_at"] >= now[:10]]),
-        "month": aggregate([row for row in rows if row["created_at"] >= now[:7]]), "all_time": aggregate(rows),
-        "by_model": [{"model": model, **aggregate([row for row in rows if row["model"] == model])} for model in sorted({row["model"] for row in rows})],
-        "by_source": [{"source": source, **aggregate([row for row in rows if row["source"] == source])} for source in sorted({row["source"] for row in rows})],
+        "settings": settings(), **{name: aggregate(selected) for name, selected in periods.items()},
+        **breakdowns["all_time"], "breakdowns": breakdowns, "daily": daily,
         "coverage": "Tracked model calls only. Hindsight internal LLM/embedding calls and external tool charges are excluded. USD costs are estimates from configured rates; interrupted calls retain a conservative reservation when usage is unavailable.",
     }
