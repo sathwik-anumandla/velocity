@@ -4,14 +4,18 @@
 
 # Stage 1: Build Web Frontend Assets
 FROM node:20-alpine AS frontend-builder
+ARG APP_REVISION=unknown
+ENV APP_REVISION=$APP_REVISION
 WORKDIR /app/web
 COPY web/package*.json ./
-RUN npm install
+RUN npm ci
 COPY web/ ./
 RUN npm run build
 
 # Stage 2: Python Backend Runtime
 FROM python:3.11-slim
+ARG APP_REVISION=unknown
+ENV APP_REVISION=$APP_REVISION
 WORKDIR /app
 
 # Install runtime dependencies (sqlite3, curl for healthchecks, DejaVu fonts for PDF engine)
@@ -31,5 +35,7 @@ COPY . .
 COPY --from=frontend-builder /app/web/dist /app/web/dist
 
 EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 CMD curl -fsS http://127.0.0.1:8000/api/version || exit 1
 
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -263,6 +263,11 @@ class ProactiveScheduler:
         now_utc = datetime.now(timezone.utc)
         now_iso = now_utc.isoformat()
 
+        from backend import workspace_jobs
+        from backend.google_service import google_workspace
+
+        await asyncio.to_thread(workspace_jobs.run_due, google_workspace, now_utc)
+
         # Run DB query in executor to avoid blocking the asyncio event loop
         loop = asyncio.get_running_loop()
         due_events = await loop.run_in_executor(None, get_due_scheduled_events, now_iso)

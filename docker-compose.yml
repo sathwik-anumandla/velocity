@@ -60,13 +60,14 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
-      - .:/app
-      - /app/web/dist
       - ./data:/app/data
+      - ./config:/app/config:ro
+    env_file:
+      - .env
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
-      - LLM_MODEL_ID=${LLM_MODEL_ID:-gpt-5.6}
+      - LLM_MODEL_ID=${LLM_MODEL_ID:-gpt-5.4-mini}
       - CLASSIFIER_MODEL_ID=${CLASSIFIER_MODEL_ID:-gpt-4o-mini}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - HINDSIGHT_API_URL=http://hindsight:8888

@@ -122,7 +122,7 @@ export interface StagedAction {
     body?: string;
     [key: string]: any;
   };
-  status: 'pending' | 'executed' | 'declined' | 'failed';
+  status: 'pending' | 'executing' | 'executed' | 'declined' | 'failed';
   result?: any;
   created_at: string;
   updated_at: string;
@@ -189,4 +189,3 @@ export interface Skill {
   memory_files: string[];
   instructions?: string;
 }
-

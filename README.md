@@ -60,6 +60,8 @@ configuration are described in [Usage and chat recovery](docs/usage-and-recovery
 
 ## Quickstart (Local Development)
 
+For immutable VPS deployment, build-version diagnostics, Android offline history and expanded Google tools, see [Deployment and Workspace Guide](docs/deployment-and-workspace.md).
+
 ### 1. Configure Environment
 
 Copy `.env.example` to `.env` and provide your API keys:

@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager, aclosing
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
 from backend import turns, usage
+from backend import history
 
 from fastapi import FastAPI, HTTPException, Query, Path, Request, Response
 from fastapi.responses import HTMLResponse, FileResponse, RedirectResponse
@@ -122,6 +123,7 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("velocity.main")
+APP_VERSION = "1.1.0"
 
 def classify_and_rename_session(user_message: str, session_id: str) -> Optional[str]:
     """
@@ -364,6 +366,8 @@ async def lifespan(app: FastAPI):
     init_db()
     usage.init_usage()
     turns.init_turns()
+    from backend import workspace_jobs
+    workspace_jobs.init_jobs()
     logger.info("Velocity Persistence initialized (SQLite + FTS5)")
 
     # Seed and bootstrap deterministic memory vault from template if not present
@@ -404,7 +408,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Velocity AI Assistant API",
-    version="1.0.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -472,7 +476,7 @@ async def root():
     return {
         "status": "online",
         "service": "Velocity Assistant Backend",
-        "version": "1.0.0",
+        "version": APP_VERSION,
     }
 
 
@@ -499,6 +503,51 @@ async def health_check():
         "hindsight": "healthy" if hindsight_healthy else "unreachable",
         "database": "healthy" if db_ok else "error",
     }
+
+
+@app.get("/api/version")
+async def deployment_version():
+    import subprocess
+    revision = os.getenv("APP_REVISION")
+    if not revision:
+        try:
+            revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=os.path.dirname(os.path.dirname(__file__)), text=True, stderr=subprocess.DEVNULL).strip()
+        except Exception:
+            revision = "unknown"
+    frontend = "unknown"
+    if dist_dir:
+        try:
+            with open(os.path.join(dist_dir, "build-info.json")) as manifest:
+                frontend = json.load(manifest).get("revision", "unknown")
+        except (OSError, ValueError):
+            pass
+    return {"version": APP_VERSION, "backend_revision": revision, "frontend_revision": frontend, "matches": revision == frontend if "unknown" not in (revision, frontend) else None}
+
+
+@app.get("/api/sessions/{session_id}/history")
+async def paginated_history(session_id: str, limit: int = Query(40, ge=1, le=100), before: Optional[str] = None):
+    try:
+        return await asyncio.to_thread(history.message_page, session_id, limit, before)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
+
+
+class BranchMessageRequest(BaseModel):
+    name: str = Field(default="Branched conversation", min_length=1, max_length=100)
+
+
+@app.post("/api/sessions/{session_id}/messages/{message_id}/branch")
+async def branch_selected_message(session_id: str, message_id: str, request: BranchMessageRequest):
+    if turns.session_running(session_id):
+        raise HTTPException(status_code=409, detail="Stop the response before branching")
+    try:
+        return await asyncio.to_thread(history.branch_message, session_id, message_id, request.name)
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error))
 
 
 # ==============================================================================
@@ -633,6 +682,7 @@ async def delete_session(session_id: str):
 
 
 @app.delete("/sessions/{session_id}/messages")
+@app.delete("/api/sessions/{session_id}/messages")
 async def truncate_session_messages(
     session_id: str,
     from_message_id: str = Query(..., description="Message ID to truncate from"),
@@ -855,6 +905,8 @@ async def chat_stream(request: ChatRequest, http_request: Request):
         )
 
         # Step 4: Real-time status for Model Thinking
+        if request.regeneration_context is not None:
+            input_items.insert(-1, {"role": "developer", "content": "Regenerate the explanation using the previous response below as context. External actions already happened: do not repeat mutations or claim to have executed new actions.\n" + request.regeneration_context})
         yield {
             "event": "status",
             "data": json.dumps({"text": "Thinking"})
@@ -875,6 +927,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
             model=model,
             is_temporary=is_temp,
             is_thread=is_thread,
+            read_only=request.regeneration_context is not None,
         )) as model_events:
             async for sse_item in model_events:
                 ev = sse_item["event"]
@@ -1703,6 +1756,9 @@ async def respond_to_action(action_id: str, payload: ActionRespondRequest):
         return StagedActionResponse(**action)
 
     if payload.action == "decline":
+        from backend.database import claim_staged_action
+        if not await asyncio.to_thread(claim_staged_action, action_id, "declined"):
+            return StagedActionResponse(**await asyncio.to_thread(db_get_staged_action, action_id))
         updated = await asyncio.to_thread(
             db_update_staged_action_status,
             action_id,
@@ -1713,13 +1769,13 @@ async def respond_to_action(action_id: str, payload: ActionRespondRequest):
 
     # payload.action == "confirm"
     if action["provider"] == "gmail" and action["action_type"] == "send_email":
+        from backend.database import claim_staged_action
+        if not await asyncio.to_thread(claim_staged_action, action_id):
+            return StagedActionResponse(**await asyncio.to_thread(db_get_staged_action, action_id))
         params = action.get("parameters", {})
-        to = params.get("to", "")
-        subject = params.get("subject", "")
-        body = params.get("body", "")
 
         try:
-            res = await asyncio.to_thread(google_workspace.send_email, to, subject, body)
+            res = await asyncio.to_thread(google_workspace.approve_email, action_id, params)
             updated = await asyncio.to_thread(
                 db_update_staged_action_status,
                 action_id,

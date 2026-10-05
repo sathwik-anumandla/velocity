@@ -24,6 +24,7 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
   const to = action.parameters?.to || 'Unknown Recipient';
   const subject = action.parameters?.subject || '(No Subject)';
   const body = action.parameters?.body || '';
+  const scheduled = action.result?.status === 'scheduled';
 
   return (
     <div className="w-full max-w-xl my-4 rounded-2xl bg-[#141416] p-4 text-neutral-200 shadow-2xl select-none">
@@ -47,7 +48,7 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
         {action.status === 'executed' && (
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-emerald-400">
             <Check className="w-3.5 h-3.5" />
-            Sent
+            {scheduled ? 'Scheduled through Velocity' : 'Sent'}
           </span>
         )}
         {action.status === 'declined' && (
@@ -77,6 +78,12 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
             {to}
           </span>
         </div>
+        {(['cc', 'bcc', 'send_at'] as const).map(field => action.parameters?.[field] && (
+          <div key={field} className="flex items-baseline gap-2">
+            <span className="text-neutral-500 shrink-0 font-medium">{field === 'send_at' ? 'Send at' : field.toUpperCase()}:</span>
+            <span className="font-mono text-neutral-200 break-all">{action.parameters[field]}</span>
+          </div>
+        ))}
         <div className="flex items-baseline gap-2">
           <span className="text-neutral-500 w-14 shrink-0 font-medium">Subject:</span>
           <span className="font-medium text-neutral-200 select-all">
@@ -111,12 +118,12 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
             {isSubmitting ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Sending...
+                Processing...
               </>
             ) : (
               <>
                 <Check className="w-3.5 h-3.5" />
-                Send Email
+                {action.parameters?.send_at ? 'Approve & Schedule' : 'Approve & Send'}
               </>
             )}
           </button>

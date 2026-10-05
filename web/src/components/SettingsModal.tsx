@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { UsageTab } from './UsageTab';
+import { DeploymentInfo } from './DeploymentInfo';
 import type { FC } from 'react';
 import {
   X,
@@ -462,6 +463,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
             {/* 1. GENERAL TAB */}
             {activeTab === 'general' && (
               <div className="space-y-6 text-xs">
+                <DeploymentInfo />
                 {/* Theme Selector */}
                 <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
                   <div>

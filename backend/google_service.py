@@ -353,337 +353,390 @@ class GoogleWorkspaceService:
     # Google Calendar Operations
     # ==========================================================================
 
-    def list_calendar_events(
-        self,
-        time_min: Optional[str] = None,
-        time_max: Optional[str] = None,
-        max_results: int = 10,
-    ) -> List[Dict[str, Any]]:
-        """
-        Lists upcoming calendar events from the user's primary calendar.
-        """
-        creds = self.get_credentials()
-        if not creds:
-            raise RuntimeError("Google Calendar is not connected. Connect via Settings -> Plugins.")
+    def _service(self, api, version):
+        credentials = self.get_credentials()
+        if not credentials:
+            raise RuntimeError("Google Workspace is disconnected. Connect via Settings -> Plugins.")
+        return build(api, version, credentials=credentials)
 
-        service = build("calendar", "v3", credentials=creds)
+    def _job_account(self):
+        email = self.get_user_email()
+        if not email:
+            raise ValueError("Cannot identify the connected Google account. Reconnect before scheduling an action.")
+        return email
 
-        if not time_min:
-            time_min = datetime.now(timezone.utc).isoformat()
-        if not time_max:
-            # Default to end of next day (48h ahead)
-            time_max = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat()
-
-        events_result = (
-            service.events()
-            .list(
-                calendarId="primary",
-                timeMin=time_min,
-                timeMax=time_max,
-                maxResults=max_results,
-                singleEvents=True,
-                orderBy="startTime",
-            )
-            .execute()
-        )
-
-        items = events_result.get("items", [])
-        events = []
-        for it in items:
-            start = it.get("start", {}).get("dateTime") or it.get("start", {}).get("date")
-            end = it.get("end", {}).get("dateTime") or it.get("end", {}).get("date")
-            meet_link = None
-            if it.get("conferenceData") and it["conferenceData"].get("entryPoints"):
-                for ep in it["conferenceData"]["entryPoints"]:
-                    if ep.get("entryPointType") == "video":
-                        meet_link = ep.get("uri")
-                        break
-
-            attendees = [a.get("email") for a in it.get("attendees", []) if a.get("email")]
-
-            events.append({
-                "id": it.get("id"),
-                "summary": it.get("summary", "(No title)"),
-                "description": it.get("description", ""),
-                "start": start,
-                "end": end,
-                "meet_link": meet_link,
-                "html_link": it.get("htmlLink"),
-                "attendees": attendees,
-                "status": it.get("status"),
-            })
-        return events
-
-    def create_calendar_event(
-        self,
-        summary: str,
-        start_time: str,
-        end_time: str,
-        description: Optional[str] = None,
-        attendees: Optional[List[str]] = None,
-        add_meet: bool = True,
-    ) -> Dict[str, Any]:
-        """
-        Creates a new event on the primary calendar with optional Google Meet.
-        """
-        creds = self.get_credentials()
-        if not creds:
-            raise RuntimeError("Google Calendar is not connected. Connect via Settings -> Plugins.")
-
-        service = build("calendar", "v3", credentials=creds)
-
-        body: Dict[str, Any] = {
-            "summary": summary,
-            "description": description or "",
-            "start": {"dateTime": start_time} if "T" in start_time else {"date": start_time},
-            "end": {"dateTime": end_time} if "T" in end_time else {"date": end_time},
+    def list_calendar_events(self, time_min=None, time_max=None, max_results=10, calendar_id="primary", query=None):
+        arguments = {
+            "calendarId": calendar_id, "timeMin": time_min or datetime.now(timezone.utc).isoformat(),
+            "timeMax": time_max or (datetime.now(timezone.utc) + timedelta(days=2)).isoformat(),
+            "maxResults": max_results, "singleEvents": True, "orderBy": "startTime",
         }
+        if query:
+            arguments["q"] = query
+        result = self._service("calendar", "v3").events().list(**arguments).execute()
+        return [self._calendar_result(event, calendar_id) for event in result.get("items", [])]
 
-        if attendees:
-            body["attendees"] = [{"email": a} for a in attendees]
+    def list_calendars(self):
+        service = self._service("calendar", "v3")
+        items, token = [], None
+        while True:
+            arguments = {"pageToken": token} if token else {}
+            page = service.calendarList().list(**arguments).execute()
+            items.extend({key: item.get(key) for key in ("id", "summary", "primary", "accessRole", "timeZone")} for item in page.get("items", []))
+            token = page.get("nextPageToken")
+            if not token:
+                return items
 
-        conference_data_version = 0
-        if add_meet:
-            conference_data_version = 1
-            body["conferenceData"] = {
-                "createRequest": {
-                    "requestId": f"meet_{int(datetime.now().timestamp())}",
-                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
-                }
-            }
+    @staticmethod
+    def _calendar_result(event, calendar_id):
+        result = {key: event.get(key) for key in (
+            "id", "summary", "description", "location", "recurrence", "reminders",
+            "visibility", "transparency", "colorId", "guestsCanModify", "guestsCanInviteOthers",
+            "guestsCanSeeOtherGuests", "status",
+        )}
+        result.update({
+            "calendar_id": calendar_id,
+            "start": event.get("start", {}).get("dateTime") or event.get("start", {}).get("date"),
+            "end": event.get("end", {}).get("dateTime") or event.get("end", {}).get("date"),
+            "html_link": event.get("htmlLink"),
+            "attendees": [attendee.get("email") for attendee in event.get("attendees", [])],
+            "meet_link": next((entry.get("uri") for entry in event.get("conferenceData", {}).get("entryPoints", []) if entry.get("entryPointType") == "video"), None),
+        })
+        return result
 
-        created = (
-            service.events()
-            .insert(
-                calendarId="primary",
-                body=body,
-                conferenceDataVersion=conference_data_version,
-            )
-            .execute()
-        )
+    @staticmethod
+    def _calendar_body(fields, creating=False):
+        from zoneinfo import ZoneInfo
+        import uuid
 
-        meet_link = None
-        if created.get("conferenceData") and created["conferenceData"].get("entryPoints"):
-            for ep in created["conferenceData"]["entryPoints"]:
-                if ep.get("entryPointType") == "video":
-                    meet_link = ep.get("uri")
+        body = {}
+        zone = fields.get("time_zone")
+        if zone:
+            ZoneInfo(zone)
+        for argument, target in (("start_time", "start"), ("end_time", "end")):
+            value = fields.get(argument)
+            if value is not None:
+                if "T" in value:
+                    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                    if parsed.tzinfo is None and not zone:
+                        raise ValueError("Timed events require an offset or an explicit IANA time_zone.")
+                    body[target] = {"dateTime": value}
+                    if zone:
+                        body[target]["timeZone"] = zone
+                else:
+                    datetime.strptime(value, "%Y-%m-%d")
+                    body[target] = {"date": value}
+        if "start" in body and "end" in body:
+            if ("date" in body["start"]) != ("date" in body["end"]):
+                raise ValueError("Start and end must both be dates or both timestamps.")
+            start_value = fields["start_time"]
+            end_value = fields["end_time"]
+            start = datetime.fromisoformat(start_value.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(end_value.replace("Z", "+00:00"))
+            if (start.tzinfo is None) != (end.tzinfo is None) or end <= start:
+                raise ValueError("Event end must be after its start with compatible timezone offsets.")
+        recurrence = fields.get("recurrence")
+        if recurrence:
+            if any(not entry.startswith(("RRULE:", "RDATE:", "EXDATE:")) for entry in recurrence):
+                raise ValueError("Recurrence accepts only RRULE, RDATE and EXDATE lines.")
+            if creating and "dateTime" in body.get("start", {}) and not zone:
+                raise ValueError("Recurring timed events require an IANA time_zone.")
+        for key in ("summary", "description", "location", "recurrence", "reminders", "visibility", "colorId", "guestsCanModify", "guestsCanInviteOthers", "guestsCanSeeOtherGuests"):
+            if key in fields and fields[key] is not None:
+                body[key] = fields[key]
+        if "attendees" in fields and fields["attendees"] is not None:
+            body["attendees"] = [{"email": email} for email in fields["attendees"]]
+        if "showAs" in fields:
+            if fields["showAs"] not in ("busy", "free"):
+                raise ValueError("showAs must be busy or free.")
+            body["transparency"] = "opaque" if fields["showAs"] == "busy" else "transparent"
+        if fields.get("add_meet", creating):
+            body["conferenceData"] = {"createRequest": {"requestId": uuid.uuid4().hex, "conferenceSolutionKey": {"type": "hangoutsMeet"}}}
+        return body
+
+    def create_calendar_event(self, summary, start_time, end_time, description=None, attendees=None, add_meet=True, **options):
+        fields = {**options, "summary": summary, "start_time": start_time, "end_time": end_time, "description": description, "attendees": attendees, "add_meet": add_meet}
+        body = self._calendar_body(fields, creating=True)
+        calendar_id = options.get("calendar_id", "primary")
+        result = self._service("calendar", "v3").events().insert(
+            calendarId=calendar_id, body=body, conferenceDataVersion=1 if add_meet else 0,
+            sendUpdates=options.get("send_updates", "none"),
+        ).execute()
+        return self._calendar_result(result, calendar_id)
+
+    def update_calendar_event(self, event_id, calendar_id="primary", **fields):
+        service = self._service("calendar", "v3")
+        body = self._calendar_body(fields)
+        if not body:
+            raise ValueError("Supply at least one event field to update.")
+        current = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
+        merged = dict(current)
+        merged.update(body)
+        start = merged.get("start", {})
+        end = merged.get("end", {})
+        validation = {
+            "start_time": start.get("dateTime") or start.get("date"),
+            "end_time": end.get("dateTime") or end.get("date"),
+            "time_zone": fields.get("time_zone") or start.get("timeZone"),
+            "recurrence": merged.get("recurrence"),
+        }
+        self._calendar_body(validation, creating=True)
+        updated = service.events().patch(calendarId=calendar_id, eventId=event_id, body=body, conferenceDataVersion=1, sendUpdates=fields.get("send_updates", "none")).execute()
+        return self._calendar_result(updated, calendar_id)
+
+    def delete_calendar_event(self, event_id, calendar_id="primary"):
+        self._service("calendar", "v3").events().delete(calendarId=calendar_id, eventId=event_id).execute()
+        return {"id": event_id, "calendar_id": calendar_id, "status": "deleted"}
+
+    @staticmethod
+    def _task_notes(notes, fields, existing=None):
+        marker = "\n\n[Velocity metadata]\n"
+        metadata = dict(existing or {})
+        text = notes or ""
+        if marker in text:
+            text, raw = text.rsplit(marker, 1)
+            try:
+                metadata.update(json.loads(raw))
+            except (ValueError, TypeError):
+                raise ValueError("Task notes contain invalid Velocity metadata.")
+        for key in ("priority", "labels", "start_at", "due_at"):
+            if key in fields:
+                metadata[key] = fields[key]
+        for key in ("start_at", "due_at"):
+            if metadata.get(key):
+                from backend.workspace_jobs import parse_time
+                parse_time(metadata[key])
+        if metadata.get("priority") and metadata["priority"] not in ("low", "normal", "high", "urgent"):
+            raise ValueError("Invalid task priority.")
+        return text + (marker + json.dumps(metadata, ensure_ascii=False) if metadata else "")
+
+    @staticmethod
+    def _task_result(task):
+        result = dict(task)
+        marker = "\n\n[Velocity metadata]\n"
+        if marker in task.get("notes", ""):
+            notes, raw = task["notes"].rsplit(marker, 1)
+            try:
+                result["velocity_metadata"] = json.loads(raw)
+                result["notes"] = notes
+            except ValueError:
+                pass
+        return result
+
+    def list_tasklists(self):
+        service = self._service("tasks", "v1")
+        items, token = [], None
+        while True:
+            arguments = {"maxResults": 1000}
+            if token:
+                arguments["pageToken"] = token
+            page = service.tasklists().list(**arguments).execute()
+            items.extend(page.get("items", []))
+            token = page.get("nextPageToken")
+            if not token:
+                return items
+
+    def list_tasks(self, include_completed=False, due_max=None, tasklist_id="@default", due_min=None, page_token=None, max_results=100):
+        arguments = {"tasklist": tasklist_id, "showCompleted": include_completed, "showHidden": include_completed, "maxResults": max_results}
+        for key, value in (("dueMax", due_max), ("dueMin", due_min), ("pageToken", page_token)):
+            if value:
+                arguments[key] = value
+        page = self._service("tasks", "v1").tasks().list(**arguments).execute()
+        return {"tasks": [self._task_result(task) for task in page.get("items", [])], "next_page_token": page.get("nextPageToken")}
+
+    def create_task(self, title, notes=None, due=None, tasklist_id="@default", parent=None, subtasks=None, recurrence=None, **fields):
+        from backend import workspace_jobs
+
+        prepared = {"title": title, "notes": self._task_notes(notes, fields)}
+        due_date = due or (fields.get("due_at") or "")[:10]
+        if due_date:
+            datetime.strptime(due_date, "%Y-%m-%d")
+            if fields.get("due_at") and due_date != fields["due_at"][:10]:
+                raise ValueError("due and due_at must specify the same local date.")
+            prepared["due"] = due_date + "T00:00:00.000Z"
+        job_options = None
+        if recurrence:
+            job_options = workspace_jobs.validate_schedule(recurrence["cron_expression"], recurrence["time_zone"])
+            job_options["account_email"] = self._job_account()
+        if parent and subtasks:
+            raise ValueError("Google Tasks supports one subtask level; a subtask cannot contain more subtasks.")
+        service = self._service("tasks", "v1")
+        arguments = {"tasklist": tasklist_id, "body": prepared}
+        if parent:
+            arguments["parent"] = parent
+        created = service.tasks().insert(**arguments).execute()
+        result = self._task_result(created)
+        result["tasklist_id"] = tasklist_id
+        if subtasks:
+            result["subtasks"] = []
+            for title in subtasks:
+                try:
+                    child = service.tasks().insert(tasklist=tasklist_id, parent=created["id"], body={"title": title}).execute()
+                    result["subtasks"].append(self._task_result(child))
+                except Exception as error:
+                    result["partial_error"] = f"Parent created; some subtasks failed: {error}. Do not recreate the parent."
                     break
+        if job_options:
+            template = {"title": prepared["title"], "notes": notes, "tasklist_id": tasklist_id, "parent": parent, "subtasks": subtasks, **fields}
+            template["due"] = due_date or None
+            try:
+                result["recurrence_job"] = workspace_jobs.create_job("task_recurrence", template, **job_options)
+            except Exception as error:
+                result["partial_error"] = f"Task created, but recurrence could not be saved: {error}"
+        return result
 
-        return {
-            "id": created.get("id"),
-            "summary": created.get("summary"),
-            "start": created.get("start", {}).get("dateTime") or created.get("start", {}).get("date"),
-            "end": created.get("end", {}).get("dateTime") or created.get("end", {}).get("date"),
-            "meet_link": meet_link,
-            "html_link": created.get("htmlLink"),
-            "status": "created",
-        }
+    def update_task(self, task_id, tasklist_id="@default", **fields):
+        service = self._service("tasks", "v1")
+        current = service.tasks().get(tasklist=tasklist_id, task=task_id).execute()
+        body = {key: fields[key] for key in ("title", "status") if key in fields}
+        if "status" in body and body["status"] not in ("needsAction", "completed"):
+            raise ValueError("Invalid task status.")
+        previous = self._task_result(current).get("velocity_metadata", {})
+        if any(key in fields for key in ("notes", "priority", "labels", "start_at", "due_at")):
+            body["notes"] = self._task_notes(fields.get("notes", self._task_result(current).get("notes", "")), fields, previous)
+        if "due" in fields or "due_at" in fields:
+            due = fields.get("due") or (fields.get("due_at") or "")[:10]
+            if due:
+                datetime.strptime(due, "%Y-%m-%d")
+                if fields.get("due_at") and due != fields["due_at"][:10]:
+                    raise ValueError("due and due_at must specify the same date.")
+            body["due"] = due + "T00:00:00.000Z" if due else None
+        if not body:
+            raise ValueError("Supply at least one task field to update.")
+        return self._task_result(service.tasks().patch(tasklist=tasklist_id, task=task_id, body=body).execute())
 
-    def delete_calendar_event(self, event_id: str) -> Dict[str, Any]:
-        """
-        Deletes a calendar event by ID.
-        """
-        creds = self.get_credentials()
-        if not creds:
-            raise RuntimeError("Google Calendar is not connected. Connect via Settings -> Plugins.")
+    def complete_task(self, task_id, tasklist_id="@default"):
+        updated = self._service("tasks", "v1").tasks().patch(tasklist=tasklist_id, task=task_id, body={"status": "completed"}).execute()
+        return self._task_result(updated)
 
-        service = build("calendar", "v3", credentials=creds)
-        service.events().delete(calendarId="primary", eventId=event_id).execute()
-        return {"id": event_id, "status": "deleted"}
-
-    # ==========================================================================
-    # Google Tasks Operations
-    # ==========================================================================
-
-    def list_tasks(
-        self,
-        include_completed: bool = False,
-        due_max: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Lists tasks from the default task list.
-        """
-        creds = self.get_credentials()
-        if not creds:
-            raise RuntimeError("Google Tasks is not connected. Connect via Settings -> Plugins.")
-
-        service = build("tasks", "v1", credentials=creds)
-
-        req_kwargs: Dict[str, Any] = {
-            "tasklist": "@default",
-            "showCompleted": include_completed,
-            "showHidden": include_completed,
-        }
-        if due_max:
-            req_kwargs["dueMax"] = due_max
-
-        result = service.tasks().list(**req_kwargs).execute()
-        items = result.get("items", [])
-
-        tasks = []
-        for it in items:
-            tasks.append({
-                "id": it.get("id"),
-                "title": it.get("title", "(No title)"),
-                "notes": it.get("notes", ""),
-                "status": it.get("status"),
-                "due": it.get("due"),
-                "updated": it.get("updated"),
-            })
-        return tasks
-
-    def create_task(
-        self,
-        title: str,
-        notes: Optional[str] = None,
-        due: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Creates a new task in Google Tasks.
-        """
-        creds = self.get_credentials()
-        if not creds:
-            raise RuntimeError("Google Tasks is not connected. Connect via Settings -> Plugins.")
-
-        service = build("tasks", "v1", credentials=creds)
-
-        body: Dict[str, Any] = {"title": title}
-        if notes:
-            body["notes"] = notes
-        if due:
-            # Google Tasks due date requires RFC 3339 format, e.g. 2026-10-05T00:00:00.000Z
-            if "T" not in due:
-                due = f"{due}T00:00:00.000Z"
-            body["due"] = due
-
-        created = service.tasks().insert(tasklist="@default", body=body).execute()
-        return {
-            "id": created.get("id"),
-            "title": created.get("title"),
-            "notes": created.get("notes", ""),
-            "due": created.get("due"),
-            "status": created.get("status", "needsAction"),
-        }
-
-    def complete_task(self, task_id: str) -> Dict[str, Any]:
-        """
-        Marks a task as completed.
-        """
-        creds = self.get_credentials()
-        if not creds:
-            raise RuntimeError("Google Tasks is not connected. Connect via Settings -> Plugins.")
-
-        service = build("tasks", "v1", credentials=creds)
-        updated = service.tasks().patch(
-            tasklist="@default",
-            task=task_id,
-            body={"status": "completed"},
-        ).execute()
-
-        return {
-            "id": updated.get("id"),
-            "title": updated.get("title"),
-            "status": "completed",
-        }
-
-    # ==========================================================================
-    # Gmail Operations
-    # ==========================================================================
-
-    def list_unread_emails(
-        self,
-        query: str = "is:unread category:primary",
-        max_results: int = 5,
-    ) -> List[Dict[str, Any]]:
-        """
-        Retrieves unread priority messages with header summaries.
-        """
-        creds = self.get_credentials()
-        if not creds:
-            raise RuntimeError("Gmail is not connected. Connect via Settings -> Plugins.")
-
-        service = build("gmail", "v1", credentials=creds)
-        res = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
-        messages_meta = res.get("messages", [])
-
+    def list_unread_emails(self, query="is:unread category:primary", max_results=5, page_token=None):
+        service = self._service("gmail", "v1")
+        arguments = {"userId": "me", "q": query, "maxResults": max_results}
+        if page_token:
+            arguments["pageToken"] = page_token
+        page = service.users().messages().list(**arguments).execute()
         emails = []
-        for m in messages_meta:
-            msg_id = m.get("id")
-            msg = service.users().messages().get(
-                userId="me",
-                id=msg_id,
-                format="metadata",
-                metadataHeaders=["From", "Subject", "Date"],
-            ).execute()
+        for item in page.get("messages", []):
+            message = service.users().messages().get(userId="me", id=item["id"], format="metadata", metadataHeaders=["From", "Subject", "Date"]).execute()
+            headers = {header["name"].lower(): header["value"] for header in message.get("payload", {}).get("headers", [])}
+            emails.append({"id": message["id"], "thread_id": message.get("threadId"), "from": headers.get("from"), "subject": headers.get("subject"), "date": headers.get("date"), "snippet": message.get("snippet"), "labels": message.get("labelIds", [])})
+        return {"messages": emails, "next_page_token": page.get("nextPageToken")}
 
-            headers = {h.get("name", "").lower(): h.get("value", "") for h in msg.get("payload", {}).get("headers", [])}
-            emails.append({
-                "id": msg_id,
-                "thread_id": msg.get("threadId"),
-                "from": headers.get("from", "Unknown"),
-                "subject": headers.get("subject", "(No Subject)"),
-                "date": headers.get("date", ""),
-                "snippet": msg.get("snippet", ""),
-            })
-        return emails
+    def get_thread(self, thread_id, max_messages=10):
+        thread = self._service("gmail", "v1").users().threads().get(userId="me", id=thread_id, format="full").execute()
 
-    def create_draft(self, to: str, subject: str, body: str) -> Dict[str, Any]:
-        """
-        Creates an email draft in Gmail without sending it.
-        """
-        creds = self.get_credentials()
-        if not creds:
-            raise RuntimeError("Gmail is not connected. Connect via Settings -> Plugins.")
+        def text_parts(payload):
+            parts = []
+            if payload.get("mimeType") == "text/plain" and payload.get("body", {}).get("data"):
+                encoded = payload["body"]["data"]
+                parts.append(base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4)).decode("utf-8", errors="replace"))
+            for part in payload.get("parts", []):
+                parts.extend(text_parts(part))
+            return parts
 
-        service = build("gmail", "v1", credentials=creds)
+        messages = []
+        for message in thread.get("messages", [])[-max_messages:]:
+            headers = {header["name"].lower(): header["value"] for header in message.get("payload", {}).get("headers", [])}
+            text = "\n".join(text_parts(message.get("payload", {})))
+            messages.append({"id": message["id"], "headers": headers, "rfc_message_id": headers.get("message-id"), "labels": message.get("labelIds", []), "body": text[:8000] or message.get("snippet", ""), "body_truncated": len(text) > 8000})
+        return {"thread_id": thread_id, "messages": messages, "messages_truncated": len(thread.get("messages", [])) > max_messages}
 
+    def list_labels(self):
+        return self._service("gmail", "v1").users().labels().list(userId="me").execute().get("labels", [])
+
+    def create_label(self, name):
+        return self._service("gmail", "v1").users().labels().create(userId="me", body={"name": name, "labelListVisibility": "labelShow", "messageListVisibility": "show"}).execute()
+
+    def modify_mail(self, target_id, target_kind, action, add_labels=None, remove_labels=None):
+        mapping = {"archive": ([], ["INBOX"]), "mark_read": ([], ["UNREAD"]), "mark_unread": (["UNREAD"], []), "star": (["STARRED"], []), "unstar": ([], ["STARRED"]), "trash": (["TRASH"], ["INBOX"]), "untrash": ([], ["TRASH"]), "labels": ([], [])}
+        if action not in mapping or target_kind not in ("message", "thread"):
+            raise ValueError("Invalid Gmail action or target kind.")
+        add, remove = mapping[action]
+        if action == "labels":
+            add, remove = add_labels or [], remove_labels or []
+            if not add and not remove:
+                raise ValueError("Supply labels to add or remove.")
+        elif add_labels or remove_labels:
+            raise ValueError("Custom label changes require action=labels.")
+        if set(add) & set(remove):
+            raise ValueError("The same label cannot be added and removed.")
+        users = self._service("gmail", "v1").users()
+        resource = users.threads() if target_kind == "thread" else users.messages()
+        if action in ("trash", "untrash"):
+            operation = resource.trash if action == "trash" else resource.untrash
+            return operation(userId="me", id=target_id).execute()
+        return resource.modify(userId="me", id=target_id, body={"addLabelIds": add, "removeLabelIds": remove}).execute()
+
+    @staticmethod
+    def _mail_payload(to, subject, body, cc=None, bcc=None, thread_id=None, in_reply_to=None):
+        if bool(thread_id) != bool(in_reply_to):
+            raise ValueError("Reply threading requires both thread_id and RFC in_reply_to.")
         message = EmailMessage()
         message.set_content(body)
-        message["To"] = to
-        message["Subject"] = subject
+        for header, value in (("To", to), ("Subject", subject), ("Cc", cc), ("Bcc", bcc), ("In-Reply-To", in_reply_to), ("References", in_reply_to)):
+            if value:
+                message[header] = value
+        result = {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}
+        if thread_id:
+            result["threadId"] = thread_id
+        return result
 
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        draft = service.users().drafts().create(
-            userId="me",
-            body={"message": {"raw": encoded_message}},
-        ).execute()
+    def create_draft(self, to, subject, body, **fields):
+        message = self._mail_payload(to, subject, body, **fields)
+        draft = self._service("gmail", "v1").users().drafts().create(userId="me", body={"message": message}).execute()
+        return {"id": draft.get("id"), "message_id": draft.get("message", {}).get("id"), "status": "draft_created"}
 
-        return {
-            "id": draft.get("id"),
-            "message_id": draft.get("message", {}).get("id"),
-            "to": to,
-            "subject": subject,
-            "status": "draft_created",
+    def send_email(self, to, subject, body, **fields):
+        message = self._mail_payload(to, subject, body, **fields)
+        sent = self._service("gmail", "v1").users().messages().send(userId="me", body=message).execute()
+        return {"id": sent.get("id"), "thread_id": sent.get("threadId"), "status": "sent"}
+
+    def execute_tool(self, name, arguments, session_id=None):
+        from backend import workspace_jobs
+
+        methods = {
+            "gcal_list_events": self.list_calendar_events, "gcal_list_calendars": self.list_calendars,
+            "gcal_create_event": self.create_calendar_event, "gcal_update_event": self.update_calendar_event,
+            "gcal_delete_event": self.delete_calendar_event, "gtasks_list_tasks": self.list_tasks,
+            "gtasks_list_lists": self.list_tasklists, "gtasks_create_task": self.create_task,
+            "gtasks_update_task": self.update_task, "gtasks_complete_task": self.complete_task,
+            "gmail_list_unread": self.list_unread_emails, "gmail_search": self.list_unread_emails,
+            "gmail_get_thread": self.get_thread, "gmail_list_labels": self.list_labels,
+            "gmail_create_label": self.create_label, "gmail_modify": self.modify_mail,
+            "gmail_create_draft": self.create_draft,
         }
+        if name in methods:
+            return methods[name](**arguments)
+        if name == "workspace_list_jobs":
+            return workspace_jobs.list_jobs()
+        if name == "workspace_cancel_job":
+            return workspace_jobs.cancel_job(arguments["job_id"], self)
+        if name == "gmail_snooze":
+            thread = self.get_thread(arguments["thread_id"], max_messages=20)
+            if not any("INBOX" in message["labels"] for message in thread["messages"]):
+                raise ValueError("Snooze requires a thread currently in the inbox.")
+            job = workspace_jobs.create_job("gmail_wake", {"thread_id": arguments["thread_id"]}, run_at=arguments["wake_at"], status="preparing", account_email=self._job_account())
+            try:
+                self.modify_mail(arguments["thread_id"], "thread", "archive")
+                return workspace_jobs.activate_job(job["id"])
+            except Exception as error:
+                workspace_jobs.pause_job(job["id"], f"Snooze setup uncertain: {error}; inspect the thread, then cancel this job to restore INBOX.")
+                raise
+        raise ValueError(f"Unsupported workspace tool: {name}")
 
-    def send_email(self, to: str, subject: str, body: str) -> Dict[str, Any]:
-        """
-        Directly sends an email via Gmail API (requires explicit user confirmation).
-        """
-        creds = self.get_credentials()
-        if not creds:
-            raise RuntimeError("Gmail is not connected. Connect via Settings -> Plugins.")
+    def approve_email(self, action_id, parameters):
+        from backend import workspace_jobs
 
-        service = build("gmail", "v1", credentials=creds)
-
-        message = EmailMessage()
-        message.set_content(body)
-        message["To"] = to
-        message["Subject"] = subject
-
-        encoded_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
-        sent = service.users().messages().send(
-            userId="me",
-            body={"raw": encoded_message},
-        ).execute()
-
-        return {
-            "id": sent.get("id"),
-            "thread_id": sent.get("threadId"),
-            "to": to,
-            "subject": subject,
-            "status": "sent",
-        }
+        fields = dict(parameters)
+        account_email = fields.pop("_account_email", None)
+        current_account = self._job_account()
+        if account_email and account_email != current_account:
+            raise ValueError("This approval was prepared for a different Google account. Reconnect that account or create a new approval.")
+        send_at = fields.pop("send_at", None)
+        self._mail_payload(**fields)
+        if send_at:
+            return {"status": "scheduled", "job": workspace_jobs.create_job("gmail_send", fields, run_at=send_at, job_id=action_id, account_email=current_account)}
+        return self.send_email(**fields)
 
 
 # Singleton service instance

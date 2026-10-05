@@ -81,6 +81,8 @@ def init_db() -> None:
         cursor.execute("ALTER TABLE sessions ADD COLUMN rollup_summary TEXT DEFAULT NULL;")
     if "summarized_through" not in existing_cols:
         cursor.execute("ALTER TABLE sessions ADD COLUMN summarized_through TEXT DEFAULT NULL;")
+    if "history_revision" not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN history_revision INTEGER NOT NULL DEFAULT 0;")
 
     # 2. Messages table
     cursor.execute("""
@@ -110,6 +112,7 @@ def init_db() -> None:
         cursor.execute("ALTER TABLE messages ADD COLUMN artifact_id TEXT DEFAULT NULL;")
 
     # Ensure canonical main timeline session exists
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_history ON messages(session_id)")
     cursor.execute("SELECT id FROM sessions WHERE id = 'main';")
     if not cursor.fetchone():
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -350,18 +353,18 @@ def delete_session(session_id: str) -> bool:
 def truncate_messages_from(session_id: str, from_message_id: str) -> int:
     """
     Deletes the message with from_message_id and all subsequent messages in the session
-    ordered by created_at. Used when editing an earlier prompt or branching conversation.
+    ordered by insertion position. Used when editing an earlier prompt.
     """
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT created_at FROM messages WHERE id = ? AND session_id = ?",
+        "SELECT rowid AS position FROM messages WHERE id = ? AND session_id = ?",
         (from_message_id, session_id),
     )
     row = cursor.fetchone()
     if not row:
         cursor.execute(
-            "SELECT created_at FROM messages WHERE (id LIKE ? OR id LIKE ?) AND session_id = ?",
+            "SELECT rowid AS position FROM messages WHERE (id LIKE ? OR id LIKE ?) AND session_id = ?",
             (f"%{from_message_id}%", f"{from_message_id}%", session_id),
         )
         row = cursor.fetchone()
@@ -369,13 +372,13 @@ def truncate_messages_from(session_id: str, from_message_id: str) -> int:
     if not row:
         conn.close()
         return 0
-    target_ts = row["created_at"]
+    position = row["position"]
     cursor.execute(
-        "DELETE FROM messages WHERE session_id = ? AND created_at >= ?",
-        (session_id, target_ts),
+        "DELETE FROM messages WHERE session_id = ? AND rowid >= ?",
+        (session_id, position),
     )
     deleted_count = cursor.rowcount
-    cursor.execute("UPDATE sessions SET summary=NULL, summarized_through=NULL WHERE id=?", (session_id,))
+    cursor.execute("UPDATE sessions SET summary=NULL, summarized_through=NULL, history_revision=history_revision+1 WHERE id=?", (session_id,))
     if cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chat_turns'").fetchone():
         cursor.execute("DELETE FROM chat_turns WHERE session_id=? AND (id NOT IN (SELECT id FROM messages) OR assistant_id NOT IN (SELECT id FROM messages))", (session_id,))
     conn.commit()
@@ -1070,6 +1073,16 @@ def update_staged_action_status(
     conn.close()
 
     return get_staged_action(action_id)
+
+
+def claim_staged_action(action_id: str, status: str = "executing") -> bool:
+    connection = get_connection()
+    try:
+        with connection:
+            claimed = connection.execute("UPDATE staged_actions SET status=?, updated_at=? WHERE id=? AND status='pending'", (status, datetime.now(timezone.utc).isoformat(), action_id)).rowcount
+        return bool(claimed)
+    finally:
+        connection.close()
 
 
 def list_staged_actions(

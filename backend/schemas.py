@@ -59,6 +59,7 @@ class ChatRequest(BaseModel):
     verbosity: Optional[str] = None
     model: Optional[str] = None
     is_temporary: bool = False
+    regeneration_context: Optional[str] = Field(default=None, max_length=30000)
 
     @field_validator("message")
     @classmethod

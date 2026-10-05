@@ -1,0 +1,15 @@
+{
+  "id": "workspace_assistant",
+  "name": "Workspace Planning & Mail",
+  "description": "Customize Calendar, plan Google Tasks and safely manage Gmail with explicit provider limitations.",
+  "enabled": true,
+  "slash_command": "/workspace",
+  "allowed_tools": [
+    "gcal_list_calendars", "gcal_list_events", "gcal_create_event", "gcal_update_event", "gcal_delete_event",
+    "gtasks_list_lists", "gtasks_list_tasks", "gtasks_create_task", "gtasks_update_task", "gtasks_complete_task",
+    "gmail_search", "gmail_get_thread", "gmail_list_unread", "gmail_list_labels", "gmail_create_label",
+    "gmail_modify", "gmail_create_draft", "gmail_send_email", "gmail_snooze",
+    "workspace_list_jobs", "workspace_cancel_job"
+  ],
+  "memory_files": []
+}

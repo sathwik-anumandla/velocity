@@ -11,3 +11,16 @@ app/
 build/
 .dart_tool/
 .DS_Store
+web/node_modules
+web/dist
+landing/node_modules
+landing/dist
+config/system_prompt.json
+config/system_prompt.md
+system_prompt.json
+system_prompt.md
+data/*
+!data/memory.template/
+!data/memory.template/**
+!data/skills.template/
+!data/skills.template/**
