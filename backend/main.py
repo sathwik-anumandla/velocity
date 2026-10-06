@@ -708,6 +708,29 @@ async def truncate_session_messages(
 # ==============================================================================
 # 3. Global Full-Text Search (FTS5)
 # ==============================================================================
+@app.get("/api/search")
+async def search_repository_endpoint(
+    q: str = Query(..., min_length=1, max_length=512),
+    kind: str = Query("all", pattern="^(all|messages|threads|documents)$"),
+    session_id: Optional[str] = None,
+    role: Optional[str] = Query(None, pattern="^(user|assistant)$"),
+    after: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    before: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    limit: int = Query(30, ge=1, le=50),
+    offset: int = Query(0, ge=0, le=10000),
+):
+    from backend.repository_tools import search_repository
+    try:
+        for boundary in (after, before):
+            if boundary:
+                datetime.strptime(boundary, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Search dates must be valid YYYY-MM-DD dates")
+    if after and before and after > before:
+        raise HTTPException(status_code=422, detail="The start date must be before the end date")
+    return await asyncio.to_thread(search_repository, q, kind, session_id, role, after, before, limit, offset)
+
+
 @app.get("/search", response_model=List[SearchResult])
 async def search(q: str = Query(..., min_length=1, description="Search query")):
     """
@@ -865,6 +888,11 @@ async def chat_stream(request: ChatRequest, http_request: Request):
 
         # Check if waterfall triggers summarization of older history
         cutoff = 30 if is_thread else (16 if session_id == "main" else 6)
+        context_budget = int(os.getenv("CONTEXT_MAX_BYTES", "200000"))
+        history_size = sum(len(json.dumps({"content": message.get("content", ""), "context": message.get("model_context")}, ensure_ascii=False).encode("utf-8")) for message in history_messages)
+        if history_size > context_budget:
+            while cutoff > 2 and sum(len(json.dumps(message, ensure_ascii=False).encode("utf-8")) for message in history_messages[-cutoff:]) > context_budget * 0.6:
+                cutoff -= 2
         local_summary = current_summary
         if len(history_messages) > cutoff:
             total_turns = len(history_messages) // 2
@@ -875,7 +903,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
                 last_message_timestamp=last_msg_ts,
                 has_unsummarized_tail=True,
             )
-            if should_sum or len(history_messages) > cutoff * 2:
+            if should_sum or len(history_messages) > cutoff * 2 or history_size > context_budget:
                 logger.info(f"Summarization waterfall triggered: {reason}")
                 to_summarize = history_messages[:-cutoff]
                 new_summary = await asyncio.to_thread(generate_summary, local_summary, to_summarize)
@@ -890,10 +918,11 @@ async def chat_stream(request: ChatRequest, http_request: Request):
                     history_messages[:] = history_messages[-cutoff:]
 
         # Compose Responses API input in strict cache-optimal order
-        context_bytes = sum(len(message.get("content", "").encode("utf-8")) for message in history_messages)
+        context_bytes = sum(len(message.get("content", "").encode("utf-8")) + len(json.dumps(message.get("model_context") or "").encode("utf-8")) for message in history_messages)
         if context_bytes > int(os.getenv("CONTEXT_MAX_BYTES", "200000")):
             yield {"event": "error", "data": json.dumps({"error": "Conversation exceeds the context budget and summarization did not reduce it. Check model availability; no history was discarded."})}
             return
+        turn_context = []
         instructions, input_items = compose_responses_input(
             messages=history_messages,
             current_summary=local_summary,
@@ -902,6 +931,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
             verbosity=verbosity,
             hot_memory=hot_memory,
             is_thread=is_thread,
+            turn_context_out=turn_context,
         )
 
         # Step 4: Real-time status for Model Thinking
@@ -916,6 +946,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
         artifact_data = None
         artifact_id = None
         staged_action_data = None
+        tool_context = []
 
         # Stream from Responses API runner
         async with aclosing(responses_runner.stream_turn(
@@ -942,6 +973,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
                         artifact_data = payload.get("artifact", None)
                         artifact_id = payload.get("artifact_id", None)
                         staged_action_data = payload.get("staged_action", None)
+                        tool_context = payload.get("tool_context", [])
                     except Exception:
                         pass
                 else:
@@ -967,6 +999,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
                 "session_id": session_id,
                 "role": "user",
                 "content": user_message,
+                "model_context": turn_context,
                 "memory_status": overall_memory_status,
                 "created_at": now_iso,
             })
@@ -975,6 +1008,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
                 "session_id": session_id,
                 "role": "assistant",
                 "content": full_assistant_response,
+                "model_context": tool_context,
                 "memory_status": overall_memory_status,
                 "artifact_id": artifact_id,
                 "artifact": artifact_data,
@@ -986,6 +1020,8 @@ async def chat_stream(request: ChatRequest, http_request: Request):
             # Persistent SQLite store
             with usage.transaction() as connection:
                 connection.execute("UPDATE messages SET content = ?, memory_status = ?, thread_proposal = ?, artifact_id = ? WHERE id = ?", (full_assistant_response, overall_memory_status, json.dumps(thread_proposal_data) if thread_proposal_data else None, artifact_id, asst_msg_id))
+                connection.execute("UPDATE messages SET model_context=? WHERE id=?", (json.dumps(turn_context, ensure_ascii=False), user_msg_id))
+                connection.execute("UPDATE messages SET model_context=? WHERE id=?", (json.dumps(tool_context, ensure_ascii=False), asst_msg_id))
             if artifact_id:
                 try:
                     conn = get_connection()
@@ -1336,6 +1372,12 @@ async def create_thread_endpoint(req: ThreadCreate):
     Creates a new side chat thread.
     """
     thread_id = f"thread_{uuid.uuid4().hex[:12]}"
+    if req.parent_session_id != "main":
+        raise HTTPException(status_code=409, detail="Threads cannot be nested. Create a sibling from the main timeline.")
+    if req.parent_message_id:
+        with usage.transaction() as connection:
+            if not connection.execute("SELECT 1 FROM messages WHERE id=? AND session_id='main'", (req.parent_message_id,)).fetchone():
+                raise HTTPException(status_code=409, detail="The parent message must belong to the main timeline.")
     thread = await asyncio.to_thread(
         db_create_thread,
         thread_id=thread_id,
@@ -1459,6 +1501,8 @@ async def respond_to_thread_proposal_endpoint(message_id: str, body: ProposalRes
         thread_name = proposal_data.get("title", "Side Chat")
         initial_summary = proposal_data.get("reason", "")
         parent_session_id = row["session_id"] or "main"
+        if parent_session_id != "main":
+            raise HTTPException(status_code=409, detail="Threads cannot be nested. Continue here or create a sibling thread.")
 
         created_thread = await asyncio.to_thread(
             db_create_thread,
@@ -1594,6 +1638,7 @@ async def update_artifact_endpoint(artifact_id: str, req: ArtifactUpdate):
         title=req.title,
         content=req.content,
         summary=req.summary,
+        theme=req.theme,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Artifact not found")
@@ -1628,6 +1673,7 @@ async def export_artifact_pdf_endpoint(artifact_id: str):
         artifact_type=artifact["artifact_type"],
         version=artifact.get("version", 1),
         created_at=artifact.get("created_at"),
+        theme=artifact.get("theme", "editorial"),
     )
 
     slug = re.sub(r'[^a-zA-Z0-9_-]+', '-', artifact["title"].lower()).strip('-')

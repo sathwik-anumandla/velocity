@@ -1,179 +1,126 @@
-"""
-Velocity PDF Export Service
-Converts Markdown artifacts into structured, publication-quality A4 PDFs.
-Strict constraint: Zero emojis in code, headers, or generated output.
-"""
+"""Theme-aware Markdown PDF export without remote resource loading."""
 
-import re
-import logging
+import html
+from html.parser import HTMLParser
 from pathlib import Path
-from datetime import datetime, timezone
-from typing import Optional, Tuple
+from datetime import datetime
+from typing import Optional
+
 import markdown
 from fpdf import FPDF
+from fpdf.fonts import TextStyle
 
-logger = logging.getLogger("velocity.pdf_service")
+
+THEMES = {
+    "editorial": {"family": "Serif", "size": 11, "background": (255, 255, 255), "text": (32, 32, 35)},
+    "clean": {"family": "Sans", "size": 10.5, "background": (255, 255, 255), "text": (32, 32, 35)},
+    "technical": {"family": "Sans", "size": 9.5, "background": (248, 248, 250), "text": (32, 32, 35)},
+    "midnight": {"family": "Sans", "size": 10.5, "background": (20, 20, 22), "text": (228, 228, 231)},
+}
 
 
-def get_font_paths() -> Tuple[Optional[Path], Optional[Path], Optional[Path]]:
-    """
-    Finds DejaVu TrueType fonts with robust fallback paths across Docker and macOS.
-    """
-    candidates = [
-        Path(__file__).resolve().parent / "fonts",
-        Path("backend/fonts"),
-        Path("/usr/share/fonts/truetype/dejavu"),
-        Path("/usr/local/share/fonts"),
-    ]
-    sans: Optional[Path] = None
-    bold: Optional[Path] = None
-    mono: Optional[Path] = None
+class SafeDocumentHTML(HTMLParser):
+    allowed = {"p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6", "strong", "b", "em", "i", "u", "s", "del", "ul", "ol", "li", "blockquote", "pre", "code", "table", "thead", "tbody", "tr", "th", "td", "a"}
+    blocked = {"script", "style", "iframe", "object", "svg"}
 
-    for p in candidates:
-        sans_candidate = p / "DejaVuSans.ttf"
-        if sans_candidate.is_file():
-            sans = sans_candidate
-            bold_candidate = p / "DejaVuSans-Bold.ttf"
-            if bold_candidate.is_file():
-                bold = bold_candidate
-            mono_candidate = p / "DejaVuSansMono.ttf"
-            if mono_candidate.is_file():
-                mono = mono_candidate
-            break
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.blocked_depth = 0
 
-    return sans, bold, mono
+    def handle_starttag(self, tag, attrs):
+        if tag in self.blocked:
+            self.blocked_depth += 1
+        if self.blocked_depth or tag not in self.allowed:
+            return
+        safe = []
+        for name, value in attrs:
+            if tag == "a" and name == "href" and value and value.startswith(("https://", "http://", "mailto:")):
+                safe.append(f' href="{html.escape(value, quote=True)}"')
+            if tag == "ol" and name == "start" and value and value.isdigit():
+                safe.append(f' start="{value}"')
+        self.parts.append("<" + tag + "".join(safe) + ">")
+
+    def handle_endtag(self, tag):
+        if tag in self.blocked:
+            self.blocked_depth = max(0, self.blocked_depth - 1)
+            return
+        if not self.blocked_depth and tag in self.allowed:
+            self.parts.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        if not self.blocked_depth:
+            self.parts.append(html.escape(data))
 
 
 class VelocityPDF(FPDF):
-    def __init__(self, doc_title: str = "Velocity Document"):
+    def __init__(self, doc_title="Velocity Document", theme="editorial"):
         super().__init__(orientation="P", unit="mm", format="A4")
         self.doc_title = doc_title[:60]
-        self.set_auto_page_break(auto=True, margin=18)
-        self.set_margins(left=18, top=18, right=18)
-
-        sans_path, bold_path, mono_path = get_font_paths()
-        if sans_path:
-            self.add_font("DejaVu", "", str(sans_path))
-            if bold_path:
-                self.add_font("DejaVu", "B", str(bold_path))
-            if mono_path:
-                self.add_font("DejaVuMono", "", str(mono_path))
-            self.font_family_name = "DejaVu"
-            self.mono_family_name = "DejaVuMono" if mono_path else "Courier"
-        else:
-            self.font_family_name = "Helvetica"
-            self.mono_family_name = "Courier"
+        self.appearance = THEMES[theme]
+        self.font_family_name = self.appearance["family"]
+        self.mono_family_name = "Mono"
+        self.set_auto_page_break(auto=True, margin=20)
+        self.set_margins(20, 24, 20)
+        directory = Path(__file__).resolve().parent / "fonts"
+        for family, basename, italic in (("Sans", "DejaVuSans", "Oblique"), ("Serif", "DejaVuSerif", "Italic")):
+            for style, suffix in (("", ""), ("B", "-Bold"), ("I", "-" + italic), ("BI", "-Bold" + italic)):
+                self.add_font(family, style, str(directory / (basename + suffix + ".ttf")))
+        for style in ("", "B", "I", "BI"):
+            self.add_font("Mono", style, str(directory / "DejaVuSansMono.ttf"))
 
     def header(self):
-        # Header text
-        self.set_font(self.font_family_name, "", 8)
-        self.set_text_color(130, 130, 130)
-        self.cell(100, 6, self.doc_title.upper(), border=0, align="L")
-        self.cell(0, 6, "VELOCITY ARCHIVE", border=0, align="R")
-        self.ln(7)
-        # Subtle horizontal divider
-        self.set_draw_color(220, 220, 220)
-        self.set_line_width(0.2)
-        self.line(18, self.get_y(), 192, self.get_y())
-        self.ln(6)
+        self.set_fill_color(*self.appearance["background"])
+        self.rect(0, 0, self.w, self.h, style="F")
+        self.set_font("Sans", "", 8)
+        self.set_text_color(*( (154, 163, 208) if self.appearance["background"][0] < 30 else (87, 95, 159) ))
+        self.cell(0, 5, "Velocity", align="R")
+        self.ln(9)
+        self.set_text_color(*self.appearance["text"])
 
     def footer(self):
         self.set_y(-14)
-        self.set_font(self.font_family_name, "", 8)
-        self.set_text_color(140, 140, 140)
-        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-        self.cell(80, 8, f"Exported: {now_str}", border=0, align="L")
-        self.cell(0, 8, f"Page {self.page_no()}/{{nb}}", border=0, align="R")
+        self.set_font("Sans", "", 8)
+        self.set_text_color(*self.appearance["text"])
+        self.cell(0, 6, f"{self.page_no()} / {{nb}}", align="C")
 
 
-def sanitize_markdown_for_pdf(content: str) -> str:
-    """
-    Cleans up markdown content for smooth HTML/PDF rendering.
-    Removes unsupported raw markdown HTML tags and normalizes code blocks.
-    """
-    # Replace triple backtick blocks with pre code
-    clean = re.sub(r'```[a-zA-Z0-9_-]*\n', '<pre><code>\n', content)
-    clean = clean.replace('```', '</code></pre>')
-
-    # Normalize whitespace characters that can cause font mapping issues
-    replacements = {
-        "\u00a0": " ",
-        "\u2009": " ",
-        "\u200a": " ",
-        "\u200b": "",
-        "\ufeff": "",
-    }
-    for k, v in replacements.items():
-        clean = clean.replace(k, v)
-
-    return clean
+def sanitize_markdown_for_pdf(content):
+    return content.replace("\u200b", "").replace("\ufeff", "")
 
 
-def generate_artifact_pdf(
-    title: str,
-    content: str,
-    artifact_type: str = "Document",
-    version: int = 1,
-    created_at: Optional[str] = None,
-) -> bytes:
-    """
-    Generates a PDF byte stream from an artifact title, metadata, and markdown body.
-    """
-    pdf = VelocityPDF(doc_title=title)
+def generate_artifact_pdf(title: str, content: str, artifact_type: str = "Document", version: int = 1,
+                          created_at: Optional[str] = None, theme: str = "editorial") -> bytes:
+    if theme not in THEMES:
+        raise ValueError("Unknown document theme")
+    pdf = VelocityPDF(title, theme)
+    pdf.set_title(title)
+    pdf.set_author("Velocity")
     pdf.alias_nb_pages()
     pdf.add_page()
-
-    # Document Header Title Block
-    pdf.set_font(pdf.font_family_name, "B", 18)
-    pdf.set_text_color(24, 24, 27)  # zinc-900
-    pdf.multi_cell(0, 8, title)
-    pdf.ln(2)
-
-    # Metadata subtitle
-    type_badge = artifact_type.replace("_", " ").upper()
-    meta_info = f"TYPE: {type_badge}  |  VERSION: v{version}"
+    pdf.set_font(pdf.font_family_name, "B", 22)
+    pdf.multi_cell(0, 10, title, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+    metadata = f"{artifact_type.replace('_', ' ').upper()}  ·  VERSION {version}"
     if created_at:
         try:
-            created_dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-            meta_info += f"  |  CREATED: {created_dt.strftime('%b %d, %Y')}"
-        except Exception:
+            metadata += "  ·  " + datetime.fromisoformat(created_at.replace("Z", "+00:00")).strftime("%b %d, %Y")
+        except ValueError:
             pass
-
-    pdf.set_font(pdf.font_family_name, "", 8)
-    pdf.set_text_color(113, 113, 122)  # zinc-500
-    pdf.cell(0, 5, meta_info)
-    pdf.ln(6)
-
-    # Thick separator below title block
-    pdf.set_draw_color(39, 39, 42)  # zinc-800
-    pdf.set_line_width(0.4)
-    pdf.line(18, pdf.get_y(), 192, pdf.get_y())
-    pdf.ln(6)
-
-    # Convert Markdown to HTML
-    clean_md = sanitize_markdown_for_pdf(content)
-    html = markdown.markdown(
-        clean_md,
-        extensions=["tables", "fenced_code"],
-        output_format="html5",
-    )
-
-    # Render HTML content using fpdf2 HTML engine
-    pdf.set_font(pdf.font_family_name, "", 10)
-    pdf.set_text_color(39, 39, 42)  # zinc-800
-
-    try:
-        pdf.write_html(html)
-        return bytes(pdf.output())
-    except Exception as e:
-        logger.warning(f"write_html encountered an error: {e}. Falling back to structured monospace PDF.")
-        fallback_pdf = VelocityPDF(doc_title=title)
-        fallback_pdf.alias_nb_pages()
-        fallback_pdf.add_page()
-        fallback_pdf.set_font(fallback_pdf.font_family_name, "B", 16)
-        fallback_pdf.multi_cell(0, 7, title)
-        fallback_pdf.ln(4)
-        fallback_pdf.set_font(fallback_pdf.mono_family_name, "", 8.5)
-        fallback_pdf.set_text_color(40, 40, 40)
-        fallback_pdf.multi_cell(0, 4.5, content)
-        return bytes(fallback_pdf.output())
+    pdf.set_font("Sans", "", 8)
+    pdf.multi_cell(0, 5, metadata, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(8)
+    converter = SafeDocumentHTML()
+    converter.feed(markdown.markdown(sanitize_markdown_for_pdf(content), extensions=["tables", "fenced_code", "sane_lists"], output_format="html5"))
+    converter.close()
+    pdf.set_font(pdf.font_family_name, "", pdf.appearance["size"])
+    pdf.set_text_color(*pdf.appearance["text"])
+    styles = {tag: TextStyle(font_family=pdf.font_family_name, color=pdf.appearance["text"], font_size_pt=size)
+              for tag, size in (("p", pdf.appearance["size"]), ("h1", 19), ("h2", 16), ("h3", 13), ("h4", 12), ("h5", 11), ("h6", 10))}
+    styles["pre"] = TextStyle(font_family="Mono", font_size_pt=8, color=pdf.appearance["text"])
+    styles["a"] = TextStyle(color=(154, 163, 208) if theme == "midnight" else (87, 95, 159))
+    styles["li"] = TextStyle(l_margin=5)
+    styles["blockquote"] = TextStyle(l_margin=5, color=pdf.appearance["text"])
+    pdf.write_html("".join(converter.parts), font_family=pdf.font_family_name,
+                   li_prefix_color=pdf.appearance["text"], tag_styles=styles, table_line_separators=True)
+    return bytes(pdf.output())

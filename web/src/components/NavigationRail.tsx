@@ -13,12 +13,14 @@ import {
 import type { ActiveFlyout, ThreadItem, NavigationLink, ChronologyEvent, Artifact } from '../types';
 import * as api from '../api';
 import type { HealthDetails } from '../api';
+import { RepositorySearch } from './RepositorySearch';
 
 interface NavigationRailProps {
   currentSessionId: string | null;
   activeFlyout: ActiveFlyout;
   onSelectFlyout: (flyout: ActiveFlyout) => void;
   onSelectSession: (sessionId: string) => void;
+  onSelectMessage?: (sessionId: string, messageId: string) => void;
   onOpenArtifact?: (artifact: Artifact) => void;
   onOpenMemoryInspector?: () => void;
   onOpenSettings?: () => void;
@@ -33,6 +35,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
   activeFlyout,
   onSelectFlyout,
   onSelectSession,
+  onSelectMessage,
   onOpenArtifact,
   onOpenMemoryInspector,
   onOpenSettings,
@@ -43,10 +46,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [links, setLinks] = useState<NavigationLink[]>([]);
   const [chronology, setChronology] = useState<ChronologyEvent[]>([]);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
   const [documentQuery, setDocumentQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
 
   // Status popup state
   const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -109,25 +109,6 @@ export const NavigationRail: FC<NavigationRailProps> = ({
     }
   }, [activeFlyout]);
 
-  useEffect(() => {
-    if (activeFlyout !== 'search' || !searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const results = await api.searchMessages(searchQuery.trim());
-        setSearchResults(results || []);
-      } catch (e) {
-        console.error('Search failed:', e);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 250);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery, activeFlyout]);
 
   useEffect(() => {
     if (!isStatusOpen) return;
@@ -286,8 +267,8 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               <span
                 className={`w-2 h-2 rounded-full ${
                   isHealthy
-                    ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
-                    : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.7)]'
+                    ? 'bg-[var(--accent-soft)] shadow-[0_0_8px_rgba(16,185,129,0.7)]'
+                    : 'bg-[var(--accent-soft)] shadow-[0_0_8px_rgba(245,158,11,0.7)]'
                 }`}
               />
             </button>
@@ -299,7 +280,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
                   <div className="flex items-center gap-2">
                     <span
                       className={`w-2 h-2 rounded-full ${
-                        isHealthy ? 'bg-emerald-500' : 'bg-amber-500'
+                        isHealthy ? 'bg-[var(--accent-soft)]' : 'bg-[var(--accent-soft)]'
                       }`}
                     />
                     <h4 className="text-xs font-semibold tracking-tight">System Telemetry</h4>
@@ -419,78 +400,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
           )}
 
           {/* B. SEARCH FLYOUT */}
-          {activeFlyout === 'search' && (
-            <div className="flex flex-col h-full">
-              <div className="px-4 py-3.5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Search className="w-4 h-4 text-[var(--text-muted)]" />
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">Search</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onSelectFlyout('none')}
-                  className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <div className="px-3 pb-2">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[var(--text-dim)]" />
-                  <input
-                    type="text"
-                    placeholder="Search messages..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    autoFocus
-                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--bg-card)] rounded-xl text-[var(--text-primary)] placeholder-neutral-500 border-none outline-none"
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-2.5 top-2.5 text-[var(--text-dim)] hover:text-[var(--text-primary)]"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Minimal Search Results List */}
-              <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-1">
-                {isSearching ? (
-                  <div className="py-8 text-center text-xs text-[var(--text-dim)] font-mono">Searching...</div>
-                ) : searchResults.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-[var(--text-dim)]">
-                    {searchQuery.trim() ? 'No matching messages found' : 'Type to search messages and code'}
-                  </div>
-                ) : (
-                  searchResults.map((item, idx) => (
-                    <div
-                      key={idx}
-                      onClick={() => {
-                        onSelectSession(item.session_id);
-                        onSelectFlyout('none');
-                      }}
-                      className="px-3 py-2 rounded-xl hover:bg-[var(--bg-card)] cursor-pointer transition-all group"
-                    >
-                      <div className="flex items-baseline justify-between text-[11px] text-[var(--text-dim)] mb-0.5">
-                        <span className="font-medium text-[var(--text-secondary)] truncate max-w-[200px] group-hover:text-[var(--text-primary)]">
-                          {item.session_name || 'Timeline'}
-                        </span>
-                        <span className="font-mono text-[10px]">{formatTimestamp(item.created_at)}</span>
-                      </div>
-                      <p className="text-xs text-[var(--text-muted)] line-clamp-2 leading-relaxed font-mono">
-                        {item.snippet || item.content}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          )}
+          {activeFlyout === 'search' && <RepositorySearch currentSessionId={currentSessionId} onSelectSession={onSelectSession} onSelectMessage={onSelectMessage || ((sessionId) => onSelectSession(sessionId))} onOpenArtifact={onOpenArtifact} onClose={() => onSelectFlyout('none')} />}
 
           {/* C. DOCUMENTS FLYOUT */}
           {activeFlyout === 'documents' && (
@@ -631,7 +541,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             <div className="flex flex-col h-full">
               <div className="px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <History className="w-4 h-4 text-purple-400" />
+                  <History className="w-4 h-4 text-[var(--accent)]" />
                   <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">Chronology</h3>
                 </div>
                 <button

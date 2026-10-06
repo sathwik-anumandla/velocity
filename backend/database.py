@@ -110,6 +110,8 @@ def init_db() -> None:
         cursor.execute("ALTER TABLE messages ADD COLUMN thread_proposal TEXT DEFAULT NULL;")
     if "artifact_id" not in existing_msg_cols:
         cursor.execute("ALTER TABLE messages ADD COLUMN artifact_id TEXT DEFAULT NULL;")
+    if "model_context" not in existing_msg_cols:
+        cursor.execute("ALTER TABLE messages ADD COLUMN model_context TEXT DEFAULT NULL;")
 
     # Ensure canonical main timeline session exists
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_history ON messages(session_id)")
@@ -173,6 +175,9 @@ def init_db() -> None:
     """)
 
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);")
+    artifact_columns = {row[1] for row in cursor.execute("PRAGMA table_info(artifacts)")}
+    if "theme" not in artifact_columns:
+        cursor.execute("ALTER TABLE artifacts ADD COLUMN theme TEXT NOT NULL DEFAULT 'editorial'")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_updated ON artifacts(updated_at DESC);")
 
     # 6. Integration Tokens table for OAuth (Google Workspace)
@@ -231,6 +236,8 @@ def init_db() -> None:
 
     conn.commit()
     conn.close()
+    from backend.repository_tools import init_search
+    init_search()
 
 
 def create_session(
@@ -477,6 +484,13 @@ def create_thread(
     Creates a new side chat (thread) row.
     """
     conn = get_connection()
+    parent = conn.execute("SELECT is_thread FROM sessions WHERE id=?", (parent_session_id,)).fetchone()
+    if parent is None or parent["is_thread"] or parent_session_id != "main":
+        conn.close()
+        raise ValueError("Threads belong to the main timeline. Create a sibling thread instead.")
+    if parent_message_id and not conn.execute("SELECT 1 FROM messages WHERE id=? AND session_id=?", (parent_message_id, parent_session_id)).fetchone():
+        conn.close()
+        raise ValueError("The parent message must belong to the main timeline.")
     now = datetime.now(timezone.utc).isoformat()
     cursor = conn.cursor()
 
@@ -788,7 +802,7 @@ def save_artifact_to_vault(artifact_id: str, title: str, artifact_type: str, con
     slug = re.sub(r'[^a-zA-Z0-9_-]+', '-', title.lower()).strip('-')
     if not slug:
         slug = artifact_id
-    filename = f"{slug}.md"
+    filename = f"{slug}-{artifact_id}.md"
     file_path = vault_docs_dir / filename
 
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -887,6 +901,7 @@ def update_artifact(
     title: Optional[str] = None,
     content: Optional[str] = None,
     summary: Optional[str] = None,
+    theme: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     current = get_artifact(artifact_id)
     if not current:
@@ -895,16 +910,20 @@ def update_artifact(
     new_title = title if title is not None else current["title"]
     new_content = content if content is not None else current["content"]
     new_summary = summary if summary is not None else current["summary"]
-    new_version = current["version"] + 1
+    if theme is not None and theme not in {"editorial", "clean", "technical", "midnight"}:
+        raise ValueError("Unknown document theme")
+    new_theme = theme or current.get("theme", "editorial")
+    new_version = current["version"] + int(any(value is not None for value in (title, content, summary)))
     now = datetime.now(timezone.utc).isoformat()
 
     file_path = current.get("file_path")
-    try:
-        file_path = save_artifact_to_vault(
-            artifact_id, new_title, current["artifact_type"], new_content, version=new_version
-        )
-    except Exception as e:
-        print(f"Warning: Failed to update vault mirror: {e}")
+    if new_version != current["version"]:
+        try:
+            file_path = save_artifact_to_vault(
+                artifact_id, new_title, current["artifact_type"], new_content, version=new_version
+            )
+        except Exception as error:
+            print(f"Warning: Failed to update vault mirror: {error}")
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -913,24 +932,44 @@ def update_artifact(
         title = ?,
         content = ?,
         summary = ?,
+        theme = ?,
         version = ?,
         file_path = ?,
         updated_at = ?
     WHERE id = ?
-    """, (new_title, new_content, new_summary, new_version, file_path, now, artifact_id))
+    """, (new_title, new_content, new_summary, new_theme, new_version, file_path, now, artifact_id))
     conn.commit()
     conn.close()
+    if file_path != current.get("file_path"):
+        remove_artifact_mirror(current)
 
     return get_artifact(artifact_id)
 
 
+def remove_artifact_mirror(artifact):
+    if not artifact or not artifact.get("file_path"):
+        return
+    path = Path(artifact["file_path"])
+    try:
+        if path.resolve().is_relative_to(Path("data/memory/documents").resolve()) and path.is_file():
+            with path.open(encoding="utf-8") as document:
+                header = document.read(2048)
+            if f"\nid: {artifact['id']}\n" in header:
+                path.unlink()
+    except OSError as error:
+        print(f"Warning: Failed to remove artifact mirror: {error}")
+
+
 def delete_artifact(artifact_id: str) -> bool:
+    current = get_artifact(artifact_id)
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM artifacts WHERE id = ?", (artifact_id,))
     affected = cursor.rowcount > 0
     conn.commit()
     conn.close()
+    if affected:
+        remove_artifact_mirror(current)
     return affected
 
 

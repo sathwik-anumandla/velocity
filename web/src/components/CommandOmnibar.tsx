@@ -12,7 +12,8 @@ import {
   Moon,
   CornerDownLeft,
 } from 'lucide-react';
-import type { SearchResult, ThreadItem } from '../types';
+import type { Artifact, SearchResult, ThreadItem } from '../types';
+import { RepositorySearch } from './RepositorySearch';
 
 interface CommandOmnibarProps {
   isOpen: boolean;
@@ -25,6 +26,9 @@ interface CommandOmnibarProps {
   onToggleCanvas?: () => void;
   onToggleTheme?: () => void;
   threads?: ThreadItem[];
+  currentSessionId?: string | null;
+  onSelectMessage?: (sessionId: string, messageId: string) => void;
+  onOpenArtifact?: (artifact: Artifact) => void;
 }
 
 interface ActionItem {
@@ -47,7 +51,11 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
   onToggleCanvas,
   onToggleTheme,
   threads = [],
+  currentSessionId = null,
+  onSelectMessage,
+  onOpenArtifact,
 }) => {
+  const [mode, setMode] = useState<'search' | 'commands'>('search');
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -57,6 +65,7 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
   // Auto-focus on open and reset state
   useEffect(() => {
     if (isOpen) {
+      setMode('search');
       setQuery('');
       setSearchResults([]);
       setIsSearching(false);
@@ -67,7 +76,7 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
 
   // Debounced search handler for message queries
   useEffect(() => {
-    if (!query.trim()) {
+    if (!query.trim() || mode === 'search') {
       setSearchResults([]);
       setIsSearching(false);
       return;
@@ -86,9 +95,23 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
     }, 180);
 
     return () => clearTimeout(timer);
-  }, [query, onSearch]);
+  }, [query, onSearch, mode]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const dismiss = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', dismiss);
+    return () => window.removeEventListener('keydown', dismiss);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
+
+  if (mode === 'search') return <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 p-4 pt-16 sm:pt-24 backdrop-blur-md" onClick={onClose}>
+    <div role="dialog" aria-modal="true" aria-label="Search Velocity" className="flex h-[75vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-[var(--bg-modal)] text-[var(--text-primary)] shadow-2xl" onClick={event => event.stopPropagation()}>
+      <div className="flex gap-2 px-4 pt-3"><button aria-pressed="true" className="rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-xs text-[var(--accent)]">Search</button><button onClick={() => setMode('commands')} className="px-3 py-2 text-xs text-[var(--text-muted)]">Commands</button></div>
+      <div className="min-h-0 flex-1"><RepositorySearch currentSessionId={currentSessionId} onSelectSession={onSelectSession} onSelectMessage={onSelectMessage || ((sessionId) => onSelectSession(sessionId))} onOpenArtifact={onOpenArtifact} onClose={onClose} /></div>
+    </div>
+  </div>;
 
   // Build static commands list
   const baseCommands: ActionItem[] = [
@@ -233,6 +256,7 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Input Bar */}
+        <div className="flex gap-2 px-4 pt-3"><button onClick={() => setMode('search')} className="px-3 py-2 text-xs text-[var(--text-muted)]">Search</button><button aria-pressed="true" className="rounded-lg bg-[var(--accent-soft)] px-3 py-2 text-xs text-[var(--accent)]">Commands</button></div>
         <div className="flex items-center gap-3 px-4 py-3.5 bg-[var(--bg-card)]">
           <Search className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
           <input

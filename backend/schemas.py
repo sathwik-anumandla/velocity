@@ -189,6 +189,7 @@ class ArtifactUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     summary: Optional[str] = None
+    theme: Optional[Literal["editorial", "clean", "technical", "midnight"]] = None
 
 
 class ArtifactResponse(BaseModel):
@@ -201,6 +202,7 @@ class ArtifactResponse(BaseModel):
     content: str
     summary: Optional[str] = None
     version: int = 1
+    theme: Literal["editorial", "clean", "technical", "midnight"] = "editorial"
     file_path: Optional[str] = None
     created_at: str
     updated_at: str

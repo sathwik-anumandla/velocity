@@ -1,4 +1,5 @@
 import json
+import hashlib
 import os
 import re
 import uuid
@@ -50,6 +51,12 @@ def init_usage():
             CREATE INDEX IF NOT EXISTS idx_usage_created ON usage_calls(created_at);
         """)
         connection.execute("UPDATE usage_calls SET status='unreported' WHERE status='pending'")
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(usage_calls)")}
+        for name, definition in (("conversation_kind", "TEXT NOT NULL DEFAULT 'other'"), ("hop", "INTEGER NOT NULL DEFAULT 0"), ("prefix_hash", "TEXT")):
+            if name not in columns:
+                connection.execute(f"ALTER TABLE usage_calls ADD COLUMN {name} {definition}")
+        connection.execute("UPDATE usage_calls SET conversation_kind='main' WHERE conversation_kind='other' AND source IN ('chat','scheduled') AND session_id='main'")
+        connection.execute("UPDATE usage_calls SET conversation_kind='thread' WHERE conversation_kind='other' AND source IN ('chat','scheduled') AND session_id IN (SELECT id FROM sessions WHERE is_thread=1)")
 
 
 def settings(connection=None):
@@ -85,7 +92,7 @@ def model_rates(model, config):
     return config["prices"].get(model, config["prices"].get(dated))
 
 
-def reserve_call(model, source, session_id, input_value, max_output_tokens):
+def reserve_call(model, source, session_id, input_value, max_output_tokens, conversation_kind="other", hop=0):
     connection = get_connection()
     try:
         connection.execute("BEGIN IMMEDIATE")
@@ -97,6 +104,9 @@ def reserve_call(model, source, session_id, input_value, max_output_tokens):
         now = datetime.now(timezone.utc).isoformat()
         call_id = str(uuid.uuid4())
         connection.execute("INSERT INTO usage_calls(id,model,source,session_id,created_at,status,reserved_usd,rates_json) VALUES(?,?,?,?,?,'pending',?,?)", (call_id, model, source, session_id, now, reserved, json.dumps(rates or {})))
+        prefix = {key: input_value.get(key) for key in ("instructions", "tools")} if isinstance(input_value, dict) else input_value
+        prefix_hash = hashlib.sha256(json.dumps(prefix, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        connection.execute("UPDATE usage_calls SET conversation_kind=?,hop=?,prefix_hash=? WHERE id=?", (conversation_kind, hop, prefix_hash, call_id))
         connection.commit()
         return call_id
     finally:
@@ -191,6 +201,8 @@ def usage_stats():
             "cache_hit_rate": result["cached_tokens"] / cache_input if cache_input else 0,
             "cache_savings_usd": savings,
             "cache_hit_calls": sum(row["cached_tokens"] > 0 for row in selected),
+            "prefix_variants": len({row["prefix_hash"] for row in selected if row.get("prefix_hash")}),
+            "tool_hop_calls": sum(row.get("hop", 0) > 0 for row in selected),
             "reasoning_share": result["reasoning_tokens"] / reasoning_output if reasoning_output else 0,
         })
         return result
@@ -206,7 +218,7 @@ def usage_stats():
         "month": [row for row in rows if row["created_at"] >= now[:7]],
         "all_time": rows,
     }
-    breakdowns = {name: {"by_model": grouped(selected, "model"), "by_source": grouped(selected, "source")} for name, selected in periods.items()}
+    breakdowns = {name: {"by_model": grouped(selected, "model"), "by_source": grouped(selected, "source"), "by_conversation": grouped(selected, "conversation_kind")} for name, selected in periods.items()}
     daily_rows = {}
     for row in rows:
         daily_rows.setdefault(row["created_at"][:10], []).append(row)

@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 interface UsagePeriod {
   model?: string;
   source?: string;
+  conversation_kind?: string;
   calls: number;
   input_tokens: number;
   output_tokens: number;
@@ -35,7 +36,7 @@ interface DailyUsage {
 type Rates = Record<string, { input: number; cached_input: number; output: number }>;
 type Range = 'today' | 'month' | 'all_time';
 type Metric = 'tokens' | 'cost' | 'calls';
-interface Breakdown { by_model: UsagePeriod[]; by_source: UsagePeriod[] }
+interface Breakdown { by_model: UsagePeriod[]; by_source: UsagePeriod[]; by_conversation?: UsagePeriod[] }
 
 interface UsageStats {
   settings: { prices: Rates };
@@ -130,7 +131,7 @@ function DailyChart({ days }: { days: DailyUsage[] }) {
         <div aria-hidden="true" className="absolute inset-x-0 top-0 bottom-0 flex flex-col justify-between"><div className="border-t border-[var(--bg-pill)]" /><div className="border-t border-[var(--bg-pill)]" /><div className="border-t border-[var(--bg-pill)]" /></div>
         <div className="relative flex h-32 items-end gap-1" role="group" aria-label={`Daily ${metric}. Choose a day for details.`}>
           {days.map(entry => <button key={entry.date} aria-pressed={day.date === entry.date} aria-label={`${dateLabel(entry.date)}: ${display(value(entry))} ${metric === 'cost' ? 'USD estimated' : metric}`} title={`${dateLabel(entry.date)} · ${display(value(entry))}`} onClick={() => setSelected(entry.date)} className="group flex h-full min-w-0 flex-1 items-end rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--text-primary)]">
-            <span className={`w-full rounded-t-sm ${entry.date === day.date ? 'bg-indigo-400' : 'bg-[var(--bg-pill-hover)] group-hover:bg-[var(--text-muted)]'}`} style={{ height: `${maximum ? Math.max(2, value(entry) / maximum * 100) : 2}%` }} />
+            <span className={`w-full rounded-t-sm ${entry.date === day.date ? 'bg-[var(--accent-soft)]' : 'bg-[var(--bg-pill-hover)] group-hover:bg-[var(--text-muted)]'}`} style={{ height: `${maximum ? Math.max(2, value(entry) / maximum * 100) : 2}%` }} />
           </button>)}
         </div>
       </div>
@@ -250,13 +251,23 @@ export function UsageTab() {
       <button disabled={busy || dirty} title={dirty ? 'Save or discard pricing edits before refreshing' : 'Refresh usage'} onClick={() => void request()} className="flex items-center gap-2 rounded-xl bg-[var(--bg-pill)] px-3 py-2 text-xs text-[var(--text-primary)] disabled:opacity-40"><RefreshCw size={14} className={busy ? 'motion-safe:animate-spin' : ''} />{busy ? 'Loading' : 'Refresh'}</button>
     </div>
     <div className="flex rounded-xl bg-[var(--bg-code)] p-1" role="group" aria-label="Usage overview period">{ranges.map(option => <button key={option.id} aria-pressed={range === option.id} onClick={() => setRange(option.id)} className={`flex-1 rounded-lg px-2 py-2.5 text-xs font-medium ${range === option.id ? 'bg-[var(--bg-pill-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}>{option.label}</button>)}</div>
-    {error && <div role="alert" className="rounded-xl bg-red-500/10 p-3 text-xs text-[var(--accent-red)]">{stats ? 'Refresh failed. Showing the last loaded data. ' : ''}{error}{!stats && <button onClick={() => void request()} disabled={busy} className="ml-2 underline">Try again</button>}</div>}
+    {error && <div role="alert" className="rounded-xl bg-[var(--accent-soft)] p-3 text-xs text-[var(--accent-red)]">{stats ? 'Refresh failed. Showing the last loaded data. ' : ''}{error}{!stats && <button onClick={() => void request()} disabled={busy} className="ml-2 underline">Try again</button>}</div>}
     {busy && !stats && <div className="grid grid-cols-2 gap-3" aria-label="Loading usage">{[0, 1, 2, 3].map(index => <div key={index} className="h-28 rounded-2xl bg-[var(--bg-code)] motion-safe:animate-pulse" />)}</div>}
     {stats && period && <>
-      {stats.all_time.calls === 0 && <div className="rounded-2xl bg-[var(--bg-code)] p-5"><Sparkles size={22} className="mb-3 text-indigo-400" /><h3 className="font-medium text-[var(--text-primary)]">Your first insights are on the way</h3><p className="mt-2 text-xs leading-relaxed text-[var(--text-muted)]">Send a message to start tracking tokens, reasoning and cache savings. Only calls recorded since usage tracking was enabled appear here.</p></div>}
+      {stats.all_time.calls === 0 && <div className="rounded-2xl bg-[var(--bg-code)] p-5"><Sparkles size={22} className="mb-3 text-[var(--accent)]" /><h3 className="font-medium text-[var(--text-primary)]">Your first insights are on the way</h3><p className="mt-2 text-xs leading-relaxed text-[var(--text-muted)]">Send a message to start tracking tokens, reasoning and cache savings. Only calls recorded since usage tracking was enabled appear here.</p></div>}
       <Overview period={period} />
-      {(period.unpriced_calls > 0 || period.unreported_calls > 0 || period.reserved_usd > 0) && <div className="rounded-xl bg-amber-500/10 p-3 text-xs leading-relaxed text-[var(--accent-amber)]"><p className="font-medium">Some costs are incomplete</p><p className="mt-1">{period.unpriced_calls} unpriced calls · {period.unreported_calls} calls without reported usage.</p>{period.reserved_usd > 0 && <p className="mt-1">Pending / unknown upper estimate: {usd(period.reserved_usd)}. Not added to the cost above.</p>}</div>}
+      {(period.unpriced_calls > 0 || period.unreported_calls > 0 || period.reserved_usd > 0) && <div className="rounded-xl bg-[var(--accent-soft)] p-3 text-xs leading-relaxed text-[var(--accent-amber)]"><p className="font-medium">Some costs are incomplete</p><p className="mt-1">{period.unpriced_calls} unpriced calls · {period.unreported_calls} calls without reported usage.</p>{period.reserved_usd > 0 && <p className="mt-1">Pending / unknown upper estimate: {usd(period.reserved_usd)}. Not added to the cost above.</p>}</div>}
       <TokenMix period={period} />
+      {breakdown?.by_conversation && <section className="rounded-2xl bg-[var(--bg-code)] p-5">
+        <h3 className="text-sm font-medium text-[var(--text-primary)]">Prompt caching</h3>
+        <p className="mt-1 text-xs text-[var(--text-muted)]">Provider-reported cached input · {breakdownNote}</p>
+        {!breakdown.by_conversation.some(scope => ['main', 'thread'].includes(scope.conversation_kind || '')) && <p className="mt-4 text-xs text-[var(--text-muted)]">Conversation requests appear here once usage is recorded.</p>}
+        <div className="mt-4 space-y-4">{breakdown.by_conversation.filter(scope => ['main', 'thread'].includes(scope.conversation_kind || '')).map(scope => <div key={scope.conversation_kind}>
+          <div className="flex justify-between text-xs"><span>{scope.conversation_kind === 'main' ? 'Main timeline' : 'Side threads'}</span><span className="font-mono text-[var(--accent)]">{scope.cache_reported ? percent(scope.cache_hit_rate) : 'Not reported'}</span></div>
+          <div className="mt-2 h-1.5 rounded-full bg-[var(--bg-pill)]"><div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${Math.min(100, scope.cache_hit_rate * 100)}%` }} /></div>
+          <p className="mt-2 text-[11px] text-[var(--text-muted)]">{count(scope.cached_tokens)} cached tokens · {usd(scope.cache_savings_usd)} saved · {scope.cache_reported}/{scope.calls} calls report cache usage</p>
+        </div>)}</div>
+      </section>}
       <DailyChart days={stats.daily || []} />
       {breakdown && <ActivityBreakdown breakdown={breakdown} note={breakdownNote} />}
       <PricingEditor key={JSON.stringify(stats.settings.prices)} rates={stats.settings.prices} busy={busy} error={pricingError} onSave={rates => void request(rates)} onDirty={next => { setDirty(next); setSaved(false); setPricingError(null); }} />

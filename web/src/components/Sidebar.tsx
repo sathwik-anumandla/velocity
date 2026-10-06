@@ -255,9 +255,9 @@ export const Sidebar: FC<SidebarProps> = ({
                           setMenuOpenId(null);
                           setSessionToDelete(session);
                         }}
-                        className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 text-red-500 hover:text-[var(--accent-red)] transition-colors text-left font-medium"
+                        className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-lg hover:bg-[var(--accent-soft)] text-[var(--accent)] hover:text-[var(--accent-red)] transition-colors text-left font-medium"
                       >
-                        <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                        <Trash2 className="w-3.5 h-3.5 text-[var(--accent)]" />
                         <span>Delete</span>
                       </button>
                     </div>
@@ -281,8 +281,8 @@ export const Sidebar: FC<SidebarProps> = ({
               <span
                 className={`w-2.5 h-2.5 rounded-full ${
                   isOverallHealthy
-                    ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50'
-                    : 'bg-amber-500 shadow-sm shadow-amber-500/50'
+                    ? 'bg-[var(--accent-soft)] shadow-sm shadow-none'
+                    : 'bg-[var(--accent-soft)] shadow-sm shadow-none'
                 }`}
               />
             </button>
@@ -301,8 +301,8 @@ export const Sidebar: FC<SidebarProps> = ({
                     <span
                       className={`font-mono text-[11px] ${
                         (health?.backend || (isBackendOnline ? 'healthy' : 'offline')) === 'healthy'
-                          ? 'text-emerald-500'
-                          : 'text-amber-500'
+                          ? 'text-[var(--accent)]'
+                          : 'text-[var(--accent)]'
                       }`}
                     >
                       {health?.backend || (isBackendOnline ? 'healthy' : 'offline')}
@@ -313,8 +313,8 @@ export const Sidebar: FC<SidebarProps> = ({
                     <span
                       className={`font-mono text-[11px] ${
                         (health?.database || (isBackendOnline ? 'healthy' : 'error')) === 'healthy'
-                          ? 'text-emerald-500'
-                          : 'text-amber-500'
+                          ? 'text-[var(--accent)]'
+                          : 'text-[var(--accent)]'
                       }`}
                     >
                       {health?.database || (isBackendOnline ? 'healthy' : 'error')}
@@ -325,8 +325,8 @@ export const Sidebar: FC<SidebarProps> = ({
                     <span
                       className={`font-mono text-[11px] ${
                         (health?.hindsight || (isBackendOnline ? 'healthy' : 'unreachable')) === 'healthy'
-                          ? 'text-emerald-500'
-                          : 'text-amber-500'
+                          ? 'text-[var(--accent)]'
+                          : 'text-[var(--accent)]'
                       }`}
                     >
                       {health?.hindsight || (isBackendOnline ? 'healthy' : 'unreachable')}
@@ -395,7 +395,7 @@ export const Sidebar: FC<SidebarProps> = ({
                   onDeleteSession(sessionToDelete.id);
                   setSessionToDelete(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-[var(--text-primary)] transition-colors font-medium text-xs shadow-sm shadow-red-950/30"
+                className="px-4 py-2 rounded-xl bg-[var(--accent-soft)] hover:bg-[var(--accent-soft)] text-[var(--text-primary)] transition-colors font-medium text-xs shadow-sm shadow-none"
               >
                 Delete
               </button>

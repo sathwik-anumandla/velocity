@@ -167,6 +167,7 @@ def get_vault_tree() -> List[Dict[str, Any]]:
 
     items: List[Dict[str, Any]] = []
     for root, dirs, files in os.walk(VAULT_DIR):
+        dirs.sort()
         # Skip hidden directories
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         for file in sorted(files):

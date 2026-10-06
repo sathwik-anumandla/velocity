@@ -19,6 +19,7 @@ from typing import List, Dict, Any, Optional, AsyncGenerator
 from dotenv import load_dotenv
 import openai
 from backend.usage import reserve_call, finish_call, mark_call
+from backend.repository_tools import REPOSITORY_TOOLS, execute as execute_repository_tool
 from backend.tavily_tool import TavilySearchTool, TAVILY_TOOL_DEFINITION
 from backend.hindsight import HindsightClient
 from backend.database import (
@@ -485,9 +486,8 @@ class ResponsesRunner:
         tools.append(CREATE_MEMORY_DOC_TOOL_DEFINITION)
 
         # Episodic Hindsight tools
-        if self.hindsight.check_health():
-            tools.append(SEARCH_PAST_CONVERSATIONS_TOOL_DEFINITION)
-            tools.append(CONSULT_MEMORY_TOOL_DEFINITION)
+        tools.append(SEARCH_PAST_CONVERSATIONS_TOOL_DEFINITION)
+        tools.append(CONSULT_MEMORY_TOOL_DEFINITION)
 
         # Side Chat proposal tool (available on main timeline only)
         if not is_thread:
@@ -496,6 +496,7 @@ class ResponsesRunner:
         # Artifact Canvas tools (available in both main timeline and side chats)
         tools.append(CREATE_ARTIFACT_TOOL_DEFINITION)
         tools.append(UPDATE_ARTIFACT_TOOL_DEFINITION)
+        tools.extend(REPOSITORY_TOOLS)
 
         # Google Workspace tools (available if connected)
         if google_workspace.is_connected():
@@ -514,7 +515,7 @@ class ResponsesRunner:
 
         full_assistant_text = ""
         if read_only:
-            tools = [tool for tool in tools if tool["name"] in WORKSPACE_READ_ONLY | {"tavily_search", "read_memory_doc", "search_past_conversations", "consult_memory", "list_scheduled_events", "list_skills"}]
+            tools = [tool for tool in tools if tool["name"] in WORKSPACE_READ_ONLY | {"tavily_search", "read_memory_doc", "search_past_conversations", "consult_memory", "list_scheduled_events", "list_skills", "search_artifacts", "read_artifact", "search_threads", "read_thread"}]
         total_usage: Dict[str, Any] = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
         last_proposal: Optional[Dict[str, Any]] = None
         last_artifact: Optional[Dict[str, Any]] = None
@@ -527,7 +528,7 @@ class ResponsesRunner:
             loop = asyncio.get_running_loop()
             max_output = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "8192"))
             try:
-                usage_id = reserve_call(active_model, source, session_id, {"instructions": instructions, "input": current_input, "tools": tools}, max_output)
+                usage_id = reserve_call(active_model, source, session_id, {"instructions": instructions, "input": current_input, "tools": tools}, max_output, conversation_kind="thread" if is_thread else "main", hop=hop)
             except Exception as error:
                 yield {"event": "error", "data": json.dumps({"error": str(error)})}
                 return
@@ -691,6 +692,17 @@ class ResponsesRunner:
 
                 if fn_name not in {definition["name"] for definition in tools}:
                     tool_output = json.dumps({"error": "This tool is unavailable or disallowed. Regeneration is read-only."})
+                elif fn_name in {tool["name"] for tool in REPOSITORY_TOOLS}:
+                    yield {"event": "tool_start", "data": json.dumps({"tool": fn_name, "query": "Reading saved context"})}
+                    try:
+                        arguments = json.loads(fn_args_raw) if fn_args_raw else {}
+                        result = await asyncio.to_thread(execute_repository_tool, fn_name, arguments)
+                        tool_output = json.dumps(result, ensure_ascii=False)
+                        result_label = "Saved context retrieved"
+                    except (LookupError, ValueError, TypeError) as error:
+                        tool_output = json.dumps({"error": str(error)})
+                        result_label = str(error)
+                    yield {"event": "tool_done", "data": json.dumps({"tool": fn_name, "result": result_label})}
                 elif fn_name == "tavily_search":
                     query = ""
                     try:
@@ -828,7 +840,10 @@ class ResponsesRunner:
                     memories, status = await loop.run_in_executor(
                         None, self.hindsight.recall, query, "mid", 5
                     )
-                    if memories:
+                    if status != "ok":
+                        tool_output = "[Memory service unavailable. Do not treat this as an empty search or claim there are no memories.]"
+                        result_msg = "Memory service unavailable"
+                    elif memories:
                         facts_text = "\n".join(f"- {m}" for m in memories)
                         tool_output = f"[Hindsight Memories Found]:\n{facts_text}"
                         result_msg = f"{len(memories)} memories found"
@@ -1207,6 +1222,7 @@ class ResponsesRunner:
         done_payload: Dict[str, Any] = {
             "text": full_assistant_text,
             "usage": total_usage,
+            "tool_context": current_input[len(input_items):],
         }
         if last_proposal:
             done_payload["thread_proposal"] = last_proposal

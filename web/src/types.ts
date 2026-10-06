@@ -64,6 +64,7 @@ export interface Artifact {
   content: string;
   summary?: string;
   version: number;
+  theme?: 'editorial' | 'clean' | 'technical' | 'midnight';
   file_path?: string;
   created_at: string;
   updated_at: string;

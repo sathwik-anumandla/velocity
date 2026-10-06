@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { FC } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
   FileCode2,
   Download,
@@ -10,11 +8,10 @@ import {
   Maximize2,
   Minimize2,
   X,
-  ExternalLink,
 } from 'lucide-react';
 import type { Artifact } from '../types';
-import { getArtifactPdfUrl } from '../api';
-import { CodeBlock } from './CognitiveWidgets';
+import { getArtifactPdfUrl, updateArtifactTheme } from '../api';
+import { MarkdownContent } from './MarkdownContent';
 
 interface ArtifactCanvasProps {
   artifact: Artifact | null;
@@ -22,6 +19,7 @@ interface ArtifactCanvasProps {
   onClose: () => void;
   width?: number;
   onWidthChange?: (width: number) => void;
+  onUpdate?: (artifact: Artifact) => void;
 }
 
 export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
@@ -30,7 +28,19 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
   onClose,
   width = 620,
   onWidthChange,
+  onUpdate,
 }) => {
+  const [savingAppearance, setSavingAppearance] = useState(false);
+  const [appearanceError, setAppearanceError] = useState<string | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const saveAppearance = async (theme: string) => {
+    if (!artifact || savingAppearance) return;
+    setSavingAppearance(true);
+    setAppearanceError(null);
+    try { onUpdate?.(await updateArtifactTheme(artifact.id, theme)); }
+    catch (error) { setAppearanceError(error instanceof Error ? error.message : 'Could not save appearance'); }
+    finally { setSavingAppearance(false); }
+  };
   const [copyFeedback, setCopyFeedback] = useState<{ id: string; version: number; error?: string } | null>(null);
   const activeFeedback = copyFeedback?.id === artifact?.id && copyFeedback?.version === artifact?.version ? copyFeedback : null;
   const copied = Boolean(activeFeedback && !activeFeedback.error);
@@ -98,15 +108,24 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
     }
   };
 
-  const handleDownloadPdf = () => {
-    if (!artifact) return;
-    const url = getArtifactPdfUrl(artifact.id);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${artifact.title.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  const handleDownloadPdf = async () => {
+    if (!artifact || exportingPdf || savingAppearance) return;
+    setExportingPdf(true);
+    setAppearanceError(null);
+    try {
+      const response = await fetch(getArtifactPdfUrl(artifact.id));
+      if (!response.ok) throw new Error('PDF export failed. Your document is unchanged; try again.');
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${artifact.title.toLowerCase().replace(/[^a-z0-9_-]+/g, '-') || 'document'}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (error) {
+      setAppearanceError(error instanceof Error ? error.message : 'PDF export failed');
+    } finally { setExportingPdf(false); }
   };
 
   if (!isOpen || !artifact) return null;
@@ -130,17 +149,17 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
       {!isExpanded && (
         <div
           onMouseDown={handleStartResize}
-          className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-sky-500/40 transition-colors z-50 group flex items-center justify-center -translate-x-1"
+          className="absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-[var(--accent-soft)] transition-colors z-50 group flex items-center justify-center -translate-x-1"
           title="Drag to resize panel"
         >
-          <div className="w-0.5 h-8 rounded-full bg-[var(--bg-pill-hover)] group-hover:bg-sky-400 transition-colors" />
+          <div className="w-0.5 h-8 rounded-full bg-[var(--bg-pill-hover)] group-hover:bg-[var(--accent-soft)] transition-colors" />
         </div>
       )}
 
       {/* Top Action & Navigation Bar */}
       <div className="flex items-center justify-between px-5 py-3.5 bg-[var(--bg-primary)] select-none shrink-0">
         <div className="flex items-center gap-2.5 min-w-0 pr-3">
-          <div className="p-1.5 rounded-xl bg-emerald-500/15 text-[var(--accent-emerald)] shrink-0">
+          <div className="p-1.5 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-emerald)] shrink-0">
             <FileCode2 className="w-4 h-4" />
           </div>
           <div className="min-w-0">
@@ -183,13 +202,14 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
           {/* Export / Download PDF */}
           <button
             type="button"
-            onClick={handleDownloadPdf}
+            onClick={() => void handleDownloadPdf()}
+            disabled={exportingPdf || savingAppearance}
             title="Download PDF"
             aria-label="Download document PDF"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--text-primary)] hover:opacity-85 text-[var(--bg-primary)] text-xs font-semibold shadow-sm transition-colors"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>PDF</span>
+            <span>{exportingPdf ? 'Exporting…' : 'PDF'}</span>
           </button>
 
           {/* Expand / Collapse Full Width */}
@@ -222,8 +242,17 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
 
       {/* Main Document Content Canvas */}
       {copyError && <p role="alert" className="px-5 py-2 text-xs text-[var(--text-secondary)]">{copyError}</p>}
+      <div className="flex flex-wrap items-center gap-3 px-5 py-3 text-xs text-[var(--text-muted)]">
+        <label className="flex items-center gap-2">Appearance
+          <select aria-label="Document appearance" value={artifact.theme || 'editorial'} disabled={savingAppearance || exportingPdf} onChange={event => void saveAppearance(event.target.value)} className="rounded-lg bg-[var(--bg-card)] px-3 py-2 text-[var(--text-primary)]">
+            <option value="editorial">Editorial</option><option value="clean">Clean</option><option value="technical">Technical</option><option value="midnight">Midnight</option>
+          </select>
+        </label>
+        <span>{savingAppearance ? 'Saving…' : 'PDF uses this appearance'}</span>
+        {appearanceError && <span role="alert">{appearanceError}</span>}
+      </div>
       <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-5 custom-scrollbar bg-[var(--bg-sidebar)]">
-        <article className="max-w-3xl mx-auto rounded-2xl bg-[var(--bg-primary)] px-5 sm:px-10 py-8 sm:py-10 shadow-sm">
+        <article data-theme={artifact.theme || 'editorial'} className="document-paper max-w-3xl mx-auto rounded-2xl px-5 sm:px-10 py-8 sm:py-10 shadow-sm">
           {/* Header Title Block */}
           <div className="mb-8 pb-6 border-b border-[var(--bg-pill)]">
             <div className="flex flex-wrap items-center gap-2 mb-4 text-[11px] text-[var(--text-muted)] tracking-wide">
@@ -251,103 +280,7 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
 
           {/* Markdown Body Viewer */}
           <div className="text-[var(--text-secondary)] text-[15px] leading-relaxed font-normal selection:bg-[var(--bg-pill)]">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                table({ children }) {
-                  return <div className="my-5 overflow-x-auto rounded-xl border border-[var(--bg-pill)]"><table className="w-full border-collapse text-sm">{children}</table></div>;
-                },
-                th({ children }) {
-                  return <th className="bg-[var(--bg-code-header)] px-4 py-3 text-left font-semibold text-[var(--text-primary)] border-b border-[var(--bg-pill)]">{children}</th>;
-                },
-                td({ children }) {
-                  return <td className="min-w-28 px-4 py-3 align-top border-b border-[var(--bg-pill)]">{children}</td>;
-                },
-                pre({ children }) {
-                  return <div>{children}</div>;
-                },
-                h1({ children }) {
-                  return (
-                    <h1 className="text-xl sm:text-2xl font-bold text-[var(--text-primary)] mt-8 mb-3 tracking-tight">
-                      {children}
-                    </h1>
-                  );
-                },
-                h2({ children }) {
-                  return (
-                    <h2 className="text-lg sm:text-xl font-semibold text-[var(--text-primary)] mt-7 mb-2.5 tracking-tight">
-                      {children}
-                    </h2>
-                  );
-                },
-                h3({ children }) {
-                  return (
-                    <h3 className="text-base sm:text-lg font-semibold text-[var(--text-secondary)] mt-5 mb-2 tracking-tight">
-                      {children}
-                    </h3>
-                  );
-                },
-                p({ children }) {
-                  return <p className="my-3 text-[var(--text-secondary)] leading-relaxed">{children}</p>;
-                },
-                ul({ children }) {
-                  return (
-                    <ul className="list-disc pl-5 my-3 space-y-1.5 text-[var(--text-secondary)] marker:text-[var(--text-dim)]">
-                      {children}
-                    </ul>
-                  );
-                },
-                ol({ children }) {
-                  return (
-                    <ol className="list-decimal pl-5 my-3 space-y-1.5 text-[var(--text-secondary)] marker:text-[var(--text-dim)]">
-                      {children}
-                    </ol>
-                  );
-                },
-                li({ children }) {
-                  return <li className="pl-1 leading-relaxed">{children}</li>;
-                },
-                blockquote({ children }) {
-                  return (
-                    <blockquote className="bg-[var(--bg-card)] px-4 py-2.5 my-4 rounded-xl text-[var(--text-muted)] italic">
-                      {children}
-                    </blockquote>
-                  );
-                },
-                code({ className, children, ...props }) {
-                  const match = /language-([^\s]+)/.exec(className || '');
-                  const value = String(children).replace(/\n$/, '');
-
-                  if (match || String(children).endsWith('\n')) {
-                    return <CodeBlock language={match?.[1] || 'text'} value={value} />;
-                  }
-
-                  return (
-                    <code
-                      className="px-1.5 py-0.5 rounded font-mono text-[13.5px] font-medium text-[var(--accent-blue)] bg-[var(--bg-card)]"
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  );
-                },
-                a({ href, children }) {
-                  return (
-                    <a
-                      href={href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--accent-blue)] hover:opacity-80 underline underline-offset-4 inline-flex items-center gap-1 transition-colors"
-                    >
-                      {children}
-                      <ExternalLink className="w-3 h-3 inline opacity-70" />
-                    </a>
-                  );
-                },
-              }}
-            >
-              {artifact.content}
-            </ReactMarkdown>
+            <MarkdownContent>{artifact.content}</MarkdownContent>
           </div>
         </article>
       </div>

@@ -494,7 +494,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         ) : t === 'oled' ? (
                           <Monitor className="w-4 h-4 text-[var(--accent-blue)]" />
                         ) : (
-                          <Moon className="w-4 h-4 text-indigo-400" />
+                          <Moon className="w-4 h-4 text-[var(--accent)]" />
                         )}
                         <span>{t === 'oled' ? 'OLED Pitch Black' : t}</span>
                       </button>
@@ -708,7 +708,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
             {activeTab === 'plugins' && (
               <div className="space-y-4 text-xs">
                 {authError && (
-                  <div className="p-3.5 rounded-2xl bg-red-500/10 text-[var(--accent-red)] flex items-start gap-2.5">
+                  <div className="p-3.5 rounded-2xl bg-[var(--accent-soft)] text-[var(--accent-red)] flex items-start gap-2.5">
                     <AlertCircle className="w-4 h-4 text-[var(--accent-red)] shrink-0 mt-0.5" />
                     <div>{authError}</div>
                   </div>
@@ -720,7 +720,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-[var(--text-primary)] text-sm">Google Workspace</span>
                         {integrationStatus?.google_connected ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-[var(--accent-emerald)]">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--accent-soft)] text-[var(--accent-emerald)]">
                             <Check className="w-3 h-3" /> Connected
                           </span>
                         ) : (
@@ -744,7 +744,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         type="button"
                         onClick={handleDisconnectGoogle}
                         disabled={isDisconnecting}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-card-hover)] hover:bg-red-500/10 text-[var(--text-secondary)] hover:text-[var(--accent-red)] transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-card-hover)] hover:bg-[var(--accent-soft)] text-[var(--text-secondary)] hover:text-[var(--accent-red)] transition-colors"
                       >
                         <Unplug className="w-3.5 h-3.5" />
                         <span>Disconnect</span>
@@ -899,7 +899,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                           <span className="font-semibold text-[var(--text-primary)] text-xs">{s.name}</span>
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                              s.status === 'active' ? 'bg-emerald-500/15 text-[var(--accent-emerald)]' : 'bg-[var(--bg-pill)] text-[var(--text-dim)]'
+                              s.status === 'active' ? 'bg-[var(--accent-soft)] text-[var(--accent-emerald)]' : 'bg-[var(--bg-pill)] text-[var(--text-dim)]'
                             }`}
                           >
                             {s.status === 'active' ? 'Active' : 'Paused'}
@@ -999,7 +999,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                             type="button"
                             onClick={() => handleToggleSkill(sk)}
                             className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-colors ${
-                              sk.enabled ? 'bg-emerald-500/15 text-[var(--accent-emerald)]' : 'bg-[var(--bg-pill)] text-[var(--text-dim)]'
+                              sk.enabled ? 'bg-[var(--accent-soft)] text-[var(--accent-emerald)]' : 'bg-[var(--bg-pill)] text-[var(--text-dim)]'
                             }`}
                           >
                             {sk.enabled ? 'Enabled' : 'Disabled'}

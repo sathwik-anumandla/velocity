@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import type { FC } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Pencil, Copy, Check, RotateCcw, LineSquiggle, FileCode2, ArrowRight } from 'lucide-react';
 import type { ChatMessage, ThreadProposal, Artifact } from '../types';
-import { CodeBlock } from './CognitiveWidgets';
+import { MarkdownContent } from './MarkdownContent';
 
 interface ChatMessageViewProps {
   message: ChatMessage;
@@ -189,14 +187,14 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
         >
           <div className="flex items-center justify-between gap-3 w-full">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-violet-500/15 text-[var(--accent-violet)] flex items-center justify-center flex-shrink-0 group-hover/rollup:scale-105 transition-transform">
+              <div className="w-7 h-7 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-violet)] flex items-center justify-center flex-shrink-0 group-hover/rollup:scale-105 transition-transform">
                 <LineSquiggle className="w-3.5 h-3.5" />
               </div>
               <span className="text-xs font-semibold text-[var(--text-primary)] tracking-tight truncate">
                 {threadRollup.title}
               </span>
             </div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--accent-violet)] bg-violet-500/10 px-2 py-0.5 rounded-full shrink-0">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--accent-violet)] bg-[var(--accent-soft)] px-2 py-0.5 rounded-full shrink-0">
               {threadRollup.type}
             </span>
           </div>
@@ -232,7 +230,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
           onClick={() => onOpenThread?.(proposal!.thread_id!)}
           className="mb-3 flex items-center gap-3.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] active:scale-[0.98] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
         >
-          <div className="w-9 h-9 rounded-xl bg-violet-500/15 text-[var(--accent-violet)] flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
+          <div className="w-9 h-9 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-violet)] flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
             <LineSquiggle className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
@@ -248,7 +246,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
           onClick={() => onOpenArtifact?.(message.artifact!)}
           className="mb-3 flex items-center gap-3.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] active:scale-[0.98] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
         >
-          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-[var(--accent-emerald)] flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
+          <div className="w-9 h-9 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-emerald)] flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
             <FileCode2 className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
@@ -261,45 +259,9 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
       {/* Message Body */}
       {isThread ? (
         /* Side Chat (Engineering Workspace Layout) */
-        <div className="w-full text-[var(--text-primary)] font-medium prose-velocity">
+        <div className="w-full min-w-0 text-[var(--text-primary)] font-medium">
           {message.content ? (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                ul({ children }) {
-                  return <ul className="list-disc pl-5 my-2 space-y-1 marker:text-[var(--text-dim)]">{children}</ul>;
-                },
-                ol({ children }) {
-                  return <ol className="list-decimal pl-5 my-2 space-y-1 marker:text-[var(--text-dim)]">{children}</ol>;
-                },
-                li({ children }) {
-                  return <li className="leading-relaxed pl-1">{children}</li>;
-                },
-                code({ inline, className, children, ...props }: any) {
-                  const match = /language-(\w+)/.exec(className || '');
-                  const value = String(children).replace(/\n$/, '');
-                  if (!inline && match) {
-                    return <CodeBlock language={match[1]} value={value} />;
-                  }
-                  if (!inline && value.includes('\n')) {
-                    return <CodeBlock language="text" value={value} />;
-                  }
-                  return (
-                    <code
-                      className="px-1.5 py-0.5 rounded font-mono text-[13.5px] bg-[var(--bg-card)] text-[var(--accent-blue)]"
-                      {...props}
-                    >
-                      {children}
-                    </code>
-                  );
-                },
-                p({ children }) {
-                  return <p className="my-2 leading-relaxed">{children}</p>;
-                },
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
+            <MarkdownContent>{message.content}</MarkdownContent>
           ) : message.isStreaming ? (
             <div className="flex items-center py-1.5 select-none">
               <span className="shimmer-text text-[15px] font-medium tracking-tight text-[var(--text-muted)]">
@@ -333,54 +295,18 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
               <div
                 className={`text-[11px] font-bold tracking-wider uppercase mb-1.5 select-none ${
                   routine.type === 'briefing'
-                    ? 'text-[var(--accent-amber)] [text-shadow:0_0_12px_rgba(245,158,11,0.6)]'
+                    ? 'text-[var(--accent-amber)] '
                     : routine.type === 'reflection'
-                    ? 'text-indigo-400 [text-shadow:0_0_12px_rgba(99,102,241,0.6)]'
-                    : 'text-[var(--accent-blue)] [text-shadow:0_0_12px_rgba(14,165,233,0.6)]'
+                    ? 'text-[var(--accent)] '
+                    : 'text-[var(--accent-blue)] '
                 }`}
               >
                 {routine.label}
               </div>
             )}
 
-            <div className="prose-velocity text-[15px] leading-relaxed text-[var(--text-primary)] font-medium">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  ul({ children }) {
-                    return <ul className="list-disc pl-5 my-1.5 space-y-1 marker:text-[var(--text-dim)]">{children}</ul>;
-                  },
-                  ol({ children }) {
-                    return <ol className="list-decimal pl-5 my-1.5 space-y-1 marker:text-[var(--text-dim)]">{children}</ol>;
-                  },
-                  li({ children }) {
-                    return <li className="leading-relaxed pl-1">{children}</li>;
-                  },
-                  code({ inline, className, children, ...props }: any) {
-                    const match = /language-(\w+)/.exec(className || '');
-                    const value = String(children).replace(/\n$/, '');
-                    if (!inline && match) {
-                      return <CodeBlock language={match[1]} value={value} />;
-                    }
-                    if (!inline && value.includes('\n')) {
-                      return <CodeBlock language="text" value={value} />;
-                    }
-                    return (
-                      <code
-                        className="px-1.5 py-0.5 rounded font-mono text-[13.5px] bg-[var(--bg-card-hover)] text-[var(--accent-blue)]"
-                        {...props}
-                      >
-                        {children}
-                      </code>
-                    );
-                  },
-                  p({ children }) {
-                    return <p className="my-1.5 leading-relaxed">{children}</p>;
-                  },
-                }}
-              >
-                {displayContent}
-              </ReactMarkdown>
+            <div className="text-[15px] leading-relaxed text-[var(--text-primary)] font-medium">
+              <MarkdownContent>{displayContent}</MarkdownContent>
             </div>
           </div>
         ) : null

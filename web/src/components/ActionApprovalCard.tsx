@@ -31,7 +31,7 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
       {/* Header */}
       <div className="flex items-center justify-between pb-3 mb-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-[var(--accent-amber)] flex items-center justify-center shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-amber)] flex items-center justify-center shrink-0">
             <Mail className="w-4 h-4" />
           </div>
           <div>
@@ -46,7 +46,7 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
 
         {/* Status Pill */}
         {action.status === 'executed' && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/15 text-[var(--accent-emerald)]">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[var(--accent-soft)] text-[var(--accent-emerald)]">
             <Check className="w-3.5 h-3.5" />
             {scheduled ? 'Scheduled through Velocity' : 'Sent'}
           </span>
@@ -58,13 +58,13 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
           </span>
         )}
         {action.status === 'failed' && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-red-500/15 text-[var(--accent-red)]">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[var(--accent-soft)] text-[var(--accent-red)]">
             <AlertCircle className="w-3.5 h-3.5" />
             Failed
           </span>
         )}
         {action.status === 'pending' && (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/15 text-[var(--accent-amber)]">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-[var(--accent-soft)] text-[var(--accent-amber)]">
             Approval Required
           </span>
         )}
@@ -131,7 +131,7 @@ export const ActionApprovalCard: FC<ActionApprovalCardProps> = ({ action, onResp
       )}
 
       {action.status === 'failed' && action.result?.error && (
-        <div className="mt-2 text-xs text-[var(--accent-red)] bg-red-500/10 rounded-xl p-2.5">
+        <div className="mt-2 text-xs text-[var(--accent-red)] bg-[var(--accent-soft)] rounded-xl p-2.5">
           {action.result.error}
         </div>
       )}

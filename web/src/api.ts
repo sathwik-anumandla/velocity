@@ -498,6 +498,29 @@ export function getArtifactPdfUrl(artifactId: string): string {
   return `${API_BASE}/api/artifacts/${artifactId}/export/pdf`;
 }
 
+export async function updateArtifactTheme(artifactId: string, theme: string): Promise<Artifact> {
+  const response = await fetch(`${API_BASE}/api/artifacts/${encodeURIComponent(artifactId)}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme }),
+  });
+  if (!response.ok) throw new Error('Could not save document appearance');
+  return response.json();
+}
+
+export interface RepositorySearchResult {
+  id: string; kind: 'messages' | 'documents' | 'threads'; session_id: string;
+  message_id: string | null; title: string; created_at: string; role: string | null;
+  content: string; snippet: string;
+}
+
+export interface RepositorySearchPage { results: RepositorySearchResult[]; has_more: boolean; next_offset: number | null }
+
+export async function searchRepository(query: string, filters: Record<string, string> = {}, signal?: AbortSignal): Promise<RepositorySearchPage> {
+  const params = new URLSearchParams({ q: query, ...filters });
+  const response = await fetch(`${API_BASE}/api/search?${params}`, { signal });
+  if (!response.ok) throw new Error('Search unavailable. Check the backend connection.');
+  return response.json();
+}
+
 // ==========================================
 // Phase 4: Integrations & Staged Actions
 // ==========================================
@@ -675,7 +698,6 @@ export async function deleteSkill(skillId: string): Promise<{ status: string; id
   if (!res.ok) throw new Error(`Failed to delete skill: ${res.status}`);
   return res.json();
 }
-
 
 
 

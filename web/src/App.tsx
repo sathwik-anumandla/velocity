@@ -29,6 +29,7 @@ import { NavigationRail } from './components/NavigationRail';
 import { OptionsMenu } from './components/OptionsMenu';
 import { ChatMessageView } from './components/ChatMessageView';
 import { ArtifactCanvas } from './components/ArtifactCanvas';
+import { VelocityWordmark } from './components/VelocityWordmark';
 import { CommandOmnibar } from './components/CommandOmnibar';
 import { MemoryInspectorModal } from './components/MemoryInspectorModal';
 import { SettingsModal } from './components/SettingsModal';
@@ -251,6 +252,24 @@ export function App() {
   }, [isStreaming]);
 
   // Switch session: loads history for 'main' timeline or specific thread
+  const searchTargetRef = useRef<{ sessionId: string; messageId: string } | null>(null);
+  const [highlightedMessage, setHighlightedMessage] = useState<string | null>(null);
+  useEffect(() => {
+    const target = searchTargetRef.current;
+    if (!target || target.sessionId !== currentSessionId) return;
+    const element = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(target.messageId)}"]`);
+    if (!element) return;
+    isUserScrolledUpRef.current = true;
+    setIsUserScrolledUp(true);
+    element.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setHighlightedMessage(target.messageId);
+    searchTargetRef.current = null;
+  }, [messages, currentSessionId]);
+  useEffect(() => {
+    if (!highlightedMessage) return;
+    const timer = window.setTimeout(() => setHighlightedMessage(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [highlightedMessage]);
   const handleSelectSession = useCallback(async (sessionId: string) => {
     if (isStreamingRef.current) return;
     const target = sessionId || 'main';
@@ -282,7 +301,7 @@ export function App() {
         setActiveSession(null);
       }
       setMessages(history);
-      setTimeout(() => scrollToBottom(true), 50);
+      if (!searchTargetRef.current) setTimeout(() => { if (!isUserScrolledUpRef.current) scrollToBottom(true); }, 50);
     } catch (err) {
       console.error(`Failed to load session messages for '${target}':`, err);
       if (target !== 'main') {
@@ -745,7 +764,7 @@ export function App() {
       {pendingProposal && (
         <div className="w-full mb-3 px-4 py-3 bg-[var(--bg-card)] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-violet-500/15 text-[var(--accent-violet)] flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-violet)] flex items-center justify-center flex-shrink-0">
               <LineSquiggle className="w-4 h-4" />
             </div>
             <div className="min-w-0">
@@ -780,7 +799,7 @@ export function App() {
       {pendingAction && (
         <div className="w-full mb-3 px-4 py-3 bg-[var(--bg-card)] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-[var(--accent-amber)] flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-amber)] flex items-center justify-center flex-shrink-0">
               <Sparkles className="w-4 h-4" />
             </div>
             <div className="min-w-0">
@@ -963,6 +982,11 @@ export function App() {
         activeFlyout={activeFlyout}
         onSelectFlyout={setActiveFlyout}
         onSelectSession={handleSelectSession}
+        onSelectMessage={(sessionId, messageId) => {
+          if (isStreamingRef.current) return;
+          searchTargetRef.current = { sessionId, messageId };
+          void handleSelectSession(sessionId);
+        }}
         onOpenArtifact={(art) => {
           setActiveArtifact(art);
           setIsCanvasOpen(true);
@@ -1010,9 +1034,7 @@ export function App() {
             /* Main Continuous Timeline Top Bar - Bolder Logo Centered */
             <div className="flex items-center justify-center w-full relative">
               <div className="flex items-center gap-2">
-                <span className="text-lg sm:text-xl font-black tracking-tight text-[var(--text-primary)]">
-                  Velocity
-                </span>
+                <VelocityWordmark />
               </div>
             </div>
           )}
@@ -1045,7 +1067,7 @@ export function App() {
                   const prevMsg = idx > 0 ? messages[idx - 1] : null;
                   const isNewDay = !prevMsg || new Date(msg.created_at).toDateString() !== new Date(prevMsg.created_at).toDateString();
                   return (
-                    <div key={msg.id} className="w-full flex flex-col">
+                    <div key={msg.id} data-message-id={msg.id} className={`w-full flex flex-col ${highlightedMessage === msg.id ? 'message-search-target' : ''}`}>
                       {isNewDay && (
                         <div className="w-full flex items-center justify-center my-2.5 select-none">
                           <span className="text-[11px] font-medium text-[var(--text-dim)] uppercase tracking-wider">
@@ -1055,7 +1077,7 @@ export function App() {
                       )}
                       <ChatMessageView
                         message={msg}
-                        isThread={Boolean(activeThread) || Boolean(activeSession?.is_thread)}
+                        isThread={currentSessionId !== 'main' && (Boolean(activeThread) || Boolean(activeSession?.is_thread))}
                         onEditAndResend={handleEditAndResend}
                         onRegenerate={handleRegenerate}
                         onOpenThread={(threadId) => handleSelectSession(threadId)}
@@ -1103,6 +1125,7 @@ export function App() {
       {/* 3. Artifact Canvas Side-by-Side Panel */}
       <ArtifactCanvas
         artifact={activeArtifact}
+        onUpdate={setActiveArtifact}
         isOpen={isCanvasOpen}
         onClose={() => setIsCanvasOpen(false)}
         width={canvasWidth}
@@ -1114,6 +1137,13 @@ export function App() {
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         onSelectSession={handleSelectSession}
+        currentSessionId={currentSessionId}
+        onSelectMessage={(sessionId, messageId) => {
+          if (isStreamingRef.current) return;
+          searchTargetRef.current = { sessionId, messageId };
+          void handleSelectSession(sessionId);
+        }}
+        onOpenArtifact={artifact => { setActiveArtifact(artifact); setIsCanvasOpen(true); }}
         onSearch={api.searchMessages}
         onTriggerRoutine={(routine) => {
           if (routine === 'briefing') {

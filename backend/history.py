@@ -39,6 +39,7 @@ def message_page(session_id, limit=40, before=None):
                 action["result"] = json.loads(action["result"]) if action.get("result") else None
                 actions[action["message_id"]] = action
         for message in messages:
+            message.pop("model_context", None)
             message["artifact"] = artifacts.get(message.get("artifact_id"))
             message["staged_action"] = actions.get(message["id"])
         return {"messages": messages, "has_more": more, "oldest_cursor": messages[0]["id"] if messages else None, "history_revision": session["history_revision"]}
@@ -50,10 +51,12 @@ def branch_message(session_id, message_id, name):
     connection = get_connection()
     try:
         connection.execute("BEGIN IMMEDIATE")
-        session = connection.execute("SELECT model FROM sessions WHERE id=?", (session_id,)).fetchone()
+        session = connection.execute("SELECT model,is_thread FROM sessions WHERE id=?", (session_id,)).fetchone()
         row = connection.execute("SELECT rowid FROM messages WHERE id=? AND session_id=?", (message_id, session_id)).fetchone()
         if row is None or session is None:
             raise LookupError("Message not found")
+        if session["is_thread"] or session_id != "main":
+            raise ValueError("Threads cannot contain child threads. Create a sibling from the main timeline.")
         if connection.execute("SELECT 1 FROM chat_turns WHERE session_id=? AND status='running'", (session_id,)).fetchone():
             raise ValueError("Stop the response before branching")
         prefix = connection.execute("SELECT role,content,created_at FROM messages WHERE session_id=? AND rowid<=? ORDER BY rowid", (session_id, row[0])).fetchall()

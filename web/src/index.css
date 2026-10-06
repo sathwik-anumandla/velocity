@@ -2,6 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
+.velocity-markdown { overflow-wrap: anywhere; line-height: 1.75; }
+.velocity-markdown > :first-child { margin-top: 0; }
+.velocity-markdown > :last-child { margin-bottom: 0; }
+.velocity-markdown p { margin: 0.65em 0; font-size: inherit; line-height: inherit; color: inherit; font-weight: inherit; }
+.velocity-markdown h1, .velocity-markdown h2, .velocity-markdown h3, .velocity-markdown h4 { margin: 1.2em 0 0.45em; font-weight: 700; line-height: 1.3; color: inherit; }
+.velocity-markdown h1 { font-size: 1.65em; }
+.velocity-markdown h2 { font-size: 1.35em; }
+.velocity-markdown h3 { font-size: 1.15em; }
+.velocity-markdown ul, .velocity-markdown ol { margin: 0.55em 0; padding-left: 1.5em; }
+.velocity-markdown ul { list-style-type: disc; }
+.velocity-markdown ol { list-style-type: decimal; }
+.velocity-markdown ul ul { list-style-type: circle; }
+.velocity-markdown ul ul ul { list-style-type: square; }
+.velocity-markdown li { margin: 0.2em 0; padding-left: 0.15em; }
+.velocity-markdown li > p { margin: 0.25em 0; }
+.velocity-markdown li > ul, .velocity-markdown li > ol { margin: 0.2em 0; }
+.velocity-markdown .task-list-item { list-style: none; }
+.velocity-markdown .task-list-item input { margin-right: 0.5em; accent-color: var(--accent); }
+.velocity-markdown .inline-code { padding: 0.1em 0.35em; border-radius: 5px; font-size: 0.87em; font-family: 'JetBrains Mono', monospace; background: var(--bg-code); color: var(--accent); }
+.velocity-markdown a { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+.velocity-markdown blockquote { margin: 1em 0; padding: 0.2em 1em; border-left: 3px solid var(--accent); color: var(--text-muted); }
+.velocity-markdown .markdown-table { max-width: 100%; overflow-x: auto; margin: 1em 0; }
+.velocity-markdown table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+.velocity-markdown th, .velocity-markdown td { padding: 0.65em 0.9em; border-bottom: 1px solid var(--bg-pill); text-align: left; min-width: 6em; }
+.velocity-markdown th { font-weight: 700; background: var(--bg-code-header); }
+.velocity-markdown img { max-width: 100%; height: auto; border-radius: 8px; }
+.velocity-markdown hr { margin: 1.5em 0; border-color: var(--bg-pill); }
+.document-paper { --bg-primary: #fff; --bg-card: #f4f4f5; --bg-card-hover: #ececee; --bg-code: #f8f8fa; --bg-code-header: #f0f0f3; --bg-pill: #e4e4e7; --text-primary: #202023; --text-secondary: #34343a; --text-muted: #62626c; --text-dim: #777782; --accent: #575f9f; --accent-blue: var(--accent); background: var(--bg-primary); color: var(--text-primary); }
+.document-paper[data-theme="editorial"] { font-family: Georgia, 'Times New Roman', serif; }
+.document-paper[data-theme="editorial"] .velocity-markdown { font-size: 17px; line-height: 1.85; font-weight: 400; }
+.document-paper[data-theme="technical"] { --bg-primary: #f8f8fa; font-size: 14px; }
+.document-paper[data-theme="midnight"] { --bg-primary: #141416; --bg-card: #1c1c1e; --bg-code: #0d0d10; --bg-code-header: #252528; --bg-pill: #343438; --text-primary: #e4e4e7; --text-secondary: #d4d4d8; --text-muted: #a1a1aa; --accent: #9aa3d0; }
+.message-search-target { outline: 2px solid var(--accent); outline-offset: 5px; border-radius: 18px; }
+
 @media (max-width: 767px) {
   .artifact-canvas {
     position: fixed;
@@ -33,12 +67,14 @@
     --text-secondary: #D4D4D8;
     --text-muted: #A1A1AA;
     --text-dim: #71717A;
-    --accent-blue: #93C5FD;
-    --accent-violet: #A78BFA;
-    --accent-emerald: #34D399;
-    --accent-amber: #FBBF24;
-    --accent-red: #FCA5A5;
-    --accent-blue-bg: rgba(30, 41, 59, 0.7);
+    --accent: #9AA3D0;
+    --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+    --accent-blue: var(--accent);
+    --accent-violet: var(--accent);
+    --accent-emerald: var(--accent);
+    --accent-amber: var(--accent);
+    --accent-red: var(--accent);
+    --accent-blue-bg: var(--accent-soft);
     color-scheme: dark;
   }
 
@@ -61,12 +97,14 @@
     --text-secondary: #27272A;
     --text-muted: #71717A;
     --text-dim: #71717A;
-    --accent-blue: #2563EB;
-    --accent-violet: #7C3AED;
-    --accent-emerald: #047857;
-    --accent-amber: #B45309;
-    --accent-red: #B91C1C;
-    --accent-blue-bg: #EFF6FF;
+    --accent: #575F9F;
+    --accent-soft: color-mix(in srgb, var(--accent) 15%, transparent);
+    --accent-blue: var(--accent);
+    --accent-violet: var(--accent);
+    --accent-emerald: var(--accent);
+    --accent-amber: var(--accent);
+    --accent-red: var(--accent);
+    --accent-blue-bg: var(--accent-soft);
     color-scheme: light;
   }
 
@@ -75,6 +113,7 @@
   }
 
   html, body, #root {
+    accent-color: var(--accent);
     height: 100%;
     width: 100%;
     margin: 0;
@@ -222,12 +261,12 @@
 .dark .token.prolog,
 .dark .token.doctype,
 .dark .token.cdata {
-  color: #6e7681;
+  color: var(--text-muted);
   font-style: italic;
 }
 
 .dark .token.punctuation {
-  color: #8b949e;
+  color: var(--text-muted);
 }
 
 .dark .token.property,
@@ -237,7 +276,7 @@
 .dark .token.constant,
 .dark .token.symbol,
 .dark .token.deleted {
-  color: #79c0ff;
+  color: var(--accent);
 }
 
 .dark .token.selector,
@@ -246,7 +285,7 @@
 .dark .token.char,
 .dark .token.builtin,
 .dark .token.inserted {
-  color: #7ee787;
+  color: var(--accent);
 }
 
 .dark .token.operator,
@@ -254,24 +293,24 @@
 .dark .token.url,
 .dark .language-css .token.string,
 .dark .style .token.string {
-  color: #c9d1d9;
+  color: var(--text-secondary);
 }
 
 .dark .token.atrule,
 .dark .token.attr-value,
 .dark .token.keyword {
-  color: #ff7b72;
+  color: var(--accent);
 }
 
 .dark .token.function,
 .dark .token.class-name {
-  color: #d2a8ff;
+  color: var(--accent);
 }
 
 .dark .token.regex,
 .dark .token.important,
 .dark .token.variable {
-  color: #ffa657;
+  color: var(--accent);
 }
 
 /* Subtle Syntax Highlighting Tokens (Light Mode) */
@@ -279,12 +318,12 @@
 .light .token.prolog,
 .light .token.doctype,
 .light .token.cdata {
-  color: #6e7781;
+  color: var(--text-muted);
   font-style: italic;
 }
 
 .light .token.punctuation {
-  color: #57606a;
+  color: var(--text-muted);
 }
 
 .light .token.property,
@@ -294,7 +333,7 @@
 .light .token.constant,
 .light .token.symbol,
 .light .token.deleted {
-  color: #0550ae;
+  color: var(--accent);
 }
 
 .light .token.selector,
@@ -303,30 +342,30 @@
 .light .token.char,
 .light .token.builtin,
 .light .token.inserted {
-  color: #116329;
+  color: var(--accent);
 }
 
 .light .token.operator,
 .light .token.entity,
 .light .token.url {
-  color: #24292f;
+  color: var(--text-secondary);
 }
 
 .light .token.atrule,
 .light .token.attr-value,
 .light .token.keyword {
-  color: #cf222e;
+  color: var(--accent);
 }
 
 .light .token.function,
 .light .token.class-name {
-  color: #8250df;
+  color: var(--accent);
 }
 
 .light .token.regex,
 .light .token.important,
 .light .token.variable {
-  color: #953800;
+  color: var(--accent);
 }
 
 /* ChatGPT-Style Flowing Shimmer Text Animation */

@@ -166,8 +166,8 @@ export const MemoryInspectorModal: FC<MemoryInspectorModalProps> = ({
             <span
               className={`w-2.5 h-2.5 rounded-full ${
                 isBackendOnline
-                  ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50'
-                  : 'bg-amber-500 shadow-sm shadow-amber-500/50'
+                  ? 'bg-[var(--accent-soft)] shadow-sm shadow-none'
+                  : 'bg-[var(--accent-soft)] shadow-sm shadow-none'
               }`}
             />
             <div>
