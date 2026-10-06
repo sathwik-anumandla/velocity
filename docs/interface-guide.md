@@ -5,9 +5,10 @@
 Choose **Settings → General → Appearance** on the web or Android app. Light,
 Dark, and OLED themes apply to chat, document readers, menus, and settings.
 The choice is saved on the current browser or device; OLED uses a black canvas.
-The base palette stays monochrome. Muted indigo is the only accent: `#575F9F`
-on light surfaces and `#9AA3D0` on dark surfaces. Statuses also use labels, not
-red/green color coding. The Velocity wordmark uses Satoshi.
+The base palette stays monochrome. Teal is the only accent: `#087F73`
+on light surfaces for contrast and `#54E6D4` on dark surfaces. Statuses also use
+labels, not red/green color coding. The full Velocity wordmark uses Satoshi Bold;
+launcher icons add a subtle glow only around the initial letter.
 
 ## Conversations
 
@@ -20,12 +21,15 @@ timeline rather than leaving the app.
 
 ## Documents
 
-Open a document from its chat pill or the Documents list. The reader separates
-the title, summary, and metadata from the Markdown body, with Copy, Share
-(Android), and PDF actions. The web reader supports a resizable split view,
+Open a document from its chat pill or the Documents list. The reader combines
+the title, summary, metadata, and Markdown body into one uncluttered page.
+Use the hamburger menu for Appearance, Copy, Share, and PDF actions. Web sharing
+uses the system share sheet when supported, otherwise copies the document text.
+Back/close stays directly accessible. The web reader supports a resizable split view,
 full-screen reading, and a full-width layout on smaller screens.
-Choose Editorial (serif), Clean, Technical, or Midnight appearance in either
-reader. Appearance is saved per document on the backend without incrementing its
+New documents default to Midnight (dark). Choose Editorial (serif), Clean,
+Technical Light, Technical Dark, or Midnight in the Appearance submenu.
+Existing saved appearances are preserved. Appearance is saved per document on the backend without incrementing its
 content version. PDF exports use the saved preset, embedded Unicode fonts, and
 paginated tables. PDF typography follows the preset but is not a pixel-identical
 browser capture. Remote images and unsafe HTML are excluded from PDF exports.

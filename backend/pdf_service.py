@@ -15,6 +15,7 @@ THEMES = {
     "editorial": {"family": "Serif", "size": 11, "background": (255, 255, 255), "text": (32, 32, 35)},
     "clean": {"family": "Sans", "size": 10.5, "background": (255, 255, 255), "text": (32, 32, 35)},
     "technical": {"family": "Sans", "size": 9.5, "background": (248, 248, 250), "text": (32, 32, 35)},
+    "technical-dark": {"family": "Sans", "size": 9.5, "background": (20, 20, 22), "text": (228, 228, 231)},
     "midnight": {"family": "Sans", "size": 10.5, "background": (20, 20, 22), "text": (228, 228, 231)},
 }
 
@@ -54,7 +55,7 @@ class SafeDocumentHTML(HTMLParser):
 
 
 class VelocityPDF(FPDF):
-    def __init__(self, doc_title="Velocity Document", theme="editorial"):
+    def __init__(self, doc_title="Velocity Document", theme="midnight"):
         super().__init__(orientation="P", unit="mm", format="A4")
         self.doc_title = doc_title[:60]
         self.appearance = THEMES[theme]
@@ -73,7 +74,7 @@ class VelocityPDF(FPDF):
         self.set_fill_color(*self.appearance["background"])
         self.rect(0, 0, self.w, self.h, style="F")
         self.set_font("Sans", "", 8)
-        self.set_text_color(*( (154, 163, 208) if self.appearance["background"][0] < 30 else (87, 95, 159) ))
+        self.set_text_color(*( (84, 230, 212) if self.appearance["background"][0] < 30 else (8, 127, 115) ))
         self.cell(0, 5, "Velocity", align="R")
         self.ln(9)
         self.set_text_color(*self.appearance["text"])
@@ -90,7 +91,7 @@ def sanitize_markdown_for_pdf(content):
 
 
 def generate_artifact_pdf(title: str, content: str, artifact_type: str = "Document", version: int = 1,
-                          created_at: Optional[str] = None, theme: str = "editorial") -> bytes:
+                          created_at: Optional[str] = None, theme: str = "midnight") -> bytes:
     if theme not in THEMES:
         raise ValueError("Unknown document theme")
     pdf = VelocityPDF(title, theme)
@@ -118,7 +119,7 @@ def generate_artifact_pdf(title: str, content: str, artifact_type: str = "Docume
     styles = {tag: TextStyle(font_family=pdf.font_family_name, color=pdf.appearance["text"], font_size_pt=size)
               for tag, size in (("p", pdf.appearance["size"]), ("h1", 19), ("h2", 16), ("h3", 13), ("h4", 12), ("h5", 11), ("h6", 10))}
     styles["pre"] = TextStyle(font_family="Mono", font_size_pt=8, color=pdf.appearance["text"])
-    styles["a"] = TextStyle(color=(154, 163, 208) if theme == "midnight" else (87, 95, 159))
+    styles["a"] = TextStyle(color=(84, 230, 212) if pdf.appearance["background"][0] < 30 else (8, 127, 115))
     styles["li"] = TextStyle(l_margin=5)
     styles["blockquote"] = TextStyle(l_margin=5, color=pdf.appearance["text"])
     pdf.write_html("".join(converter.parts), font_family=pdf.font_family_name,

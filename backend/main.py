@@ -1673,7 +1673,7 @@ async def export_artifact_pdf_endpoint(artifact_id: str):
         artifact_type=artifact["artifact_type"],
         version=artifact.get("version", 1),
         created_at=artifact.get("created_at"),
-        theme=artifact.get("theme", "editorial"),
+        theme=artifact.get("theme", "midnight"),
     )
 
     slug = re.sub(r'[^a-zA-Z0-9_-]+', '-', artifact["title"].lower()).strip('-')

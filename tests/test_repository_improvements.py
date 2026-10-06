@@ -106,11 +106,24 @@ class RetrievalTests(RepositoryFixture, unittest.TestCase):
 
     def test_appearance_does_not_increment_content_version(self):
         self.seed()
+        self.assertEqual(database.get_artifact("document")["theme"], "midnight")
         artifact = database.update_artifact("document", theme="midnight")
         self.assertEqual(artifact["theme"], "midnight")
         self.assertEqual(artifact["version"], 1)
         with self.assertRaises(ValueError):
             database.update_artifact("document", theme="sepia")
+
+    def test_document_themes_survive_restart_and_new_documents_default_to_midnight(self):
+        self.seed()
+        for theme in ("editorial", "technical", "technical-dark"):
+            with self.subTest(theme=theme):
+                database.update_artifact("document", theme=theme)
+                database.init_db()
+                self.assertEqual(database.get_artifact("document")["theme"], theme)
+        created = database.create_artifact("new-document", "main", "New document", "document", "Body")
+        self.assertEqual(created["theme"], "midnight")
+        self.assertEqual(database.get_artifact("new-document")["theme"], "midnight")
+        self.assertEqual(database.get_artifact("document")["version"], 1)
 
     def test_document_mirrors_do_not_collide_and_renames_remove_only_owned_files(self):
         working_directory = os.getcwd()
@@ -211,7 +224,7 @@ class ToolRunnerTests(RepositoryFixture, unittest.IsolatedAsyncioTestCase):
 class PdfTests(unittest.TestCase):
     def test_all_presets_support_unicode_italic_code_and_nested_lists(self):
         content = '# Résumé\n\n*Italic* **Bold** café — €\n\n- First\n    - Nested\n\n```c++\nif (value < 2) { print("<html>"); }\n```\n\n| Field | Value |\n|---|---|\n| Name | André |'
-        for theme in ("editorial", "clean", "technical", "midnight"):
+        for theme in ("editorial", "clean", "technical", "technical-dark", "midnight"):
             with self.subTest(theme=theme):
                 result = generate_artifact_pdf("Unicode document", content, theme=theme)
                 self.assertTrue(result.startswith(b"%PDF-"))

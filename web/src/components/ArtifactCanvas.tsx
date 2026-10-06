@@ -8,6 +8,10 @@ import {
   Maximize2,
   Minimize2,
   X,
+  Menu,
+  Share2,
+  Palette,
+  ChevronLeft,
 } from 'lucide-react';
 import type { Artifact } from '../types';
 import { getArtifactPdfUrl, updateArtifactTheme } from '../api';
@@ -30,6 +34,28 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
   onWidthChange,
   onUpdate,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const themes = [['midnight', 'Midnight'], ['editorial', 'Editorial'], ['clean', 'Clean'], ['technical', 'Technical Light'], ['technical-dark', 'Technical Dark']];
+  const dismissMenu = () => {
+    setMenuOpen(false);
+    setAppearanceOpen(false);
+    menuButtonRef.current?.focus();
+  };
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuRef.current?.querySelector<HTMLButtonElement>('[data-document-action]')?.focus();
+    const outside = (event: PointerEvent) => {
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) {
+        setMenuOpen(false);
+        setAppearanceOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', outside);
+    return () => window.removeEventListener('pointerdown', outside);
+  }, [menuOpen, appearanceOpen]);
   const [savingAppearance, setSavingAppearance] = useState(false);
   const [appearanceError, setAppearanceError] = useState<string | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
@@ -53,12 +79,13 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
-        onClose();
+        if (menuOpen) dismissMenu();
+        else onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, menuOpen]);
 
   useEffect(() => {
     if (!isDragging) return;
@@ -128,6 +155,18 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
     } finally { setExportingPdf(false); }
   };
 
+  const handleShare = async () => {
+    if (!artifact) return;
+    try {
+      if (navigator.share) await navigator.share({ title: artifact.title, text: artifact.content });
+      else await handleCopyMarkdown();
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        setAppearanceError('Sharing unavailable. Use Copy to share the document text.');
+      }
+    }
+  };
+
   if (!isOpen || !artifact) return null;
 
   const typeBadge = (artifact.artifact_type || 'document').replace(/_/g, ' ').toUpperCase();
@@ -159,100 +198,61 @@ export const ArtifactCanvas: FC<ArtifactCanvasProps> = ({
       {/* Top Action & Navigation Bar */}
       <div className="flex items-center justify-between px-5 py-3.5 bg-[var(--bg-primary)] select-none shrink-0">
         <div className="flex items-center gap-2.5 min-w-0 pr-3">
-          <div className="p-1.5 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-emerald)] shrink-0">
+          <div className="p-1.5 text-[var(--text-muted)] shrink-0">
             <FileCode2 className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
-                {typeBadge}
-              </span>
-              <span className="text-[11px] font-mono text-[var(--text-dim)]">
-                v{artifact.version}
-              </span>
-            </div>
-            <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate tracking-tight mt-0.5">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate tracking-tight">
               {artifact.title}
             </h3>
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
-          {/* Copy Raw Markdown */}
-          <button
-            type="button"
-            onClick={handleCopyMarkdown}
-            title="Copy Markdown"
-            aria-label={copied ? 'Document copied' : 'Copy document Markdown'}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-card)] hover:bg-[var(--bg-card)] text-[var(--text-secondary)] text-xs font-medium transition-colors"
-          >
-            {copied ? (
-              <>
-                <Check className="w-3.5 h-3.5 text-[var(--accent-emerald)]" />
-                <span className="text-[var(--accent-emerald)]">Copied</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Copy</span>
-              </>
+
+        <div className="flex items-center gap-1 shrink-0">
+          <div ref={menuRef} className="relative">
+            <button ref={menuButtonRef} type="button" aria-label="Document options" aria-expanded={menuOpen} aria-controls="document-options"
+              onClick={() => { setMenuOpen(!menuOpen); setAppearanceOpen(false); }}
+              className="p-2 rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-card)]">
+              <Menu className="w-5 h-5" />
+            </button>
+            {menuOpen && (
+              <div id="document-options" aria-label="Document options" className="absolute right-0 top-full mt-2 z-50 w-60 rounded-2xl border border-[var(--bg-pill)] bg-[var(--bg-primary)] p-2 shadow-xl text-sm text-[var(--text-primary)]">
+                {appearanceOpen ? (
+                  <>
+                    <button data-document-action type="button" onClick={() => setAppearanceOpen(false)} className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-[var(--bg-card)]">
+                      <ChevronLeft className="w-4 h-4" /> Appearance
+                    </button>
+                    <p className="px-3 pb-2 text-xs text-[var(--text-muted)]">Also applies to PDF exports</p>
+                    {themes.map(([theme, label]) => (
+                      <button key={theme} type="button" aria-pressed={(artifact.theme || 'midnight') === theme} disabled={savingAppearance || exportingPdf}
+                        onClick={() => { dismissMenu(); void saveAppearance(theme); }}
+                        className="flex items-center justify-between w-full p-3 rounded-xl hover:bg-[var(--bg-card)] disabled:opacity-50">
+                        {label}{(artifact.theme || 'midnight') === theme && <Check className="w-4 h-4 text-[var(--accent)]" />}
+                      </button>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <button data-document-action type="button" onClick={() => setAppearanceOpen(true)} className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-[var(--bg-card)]"><Palette className="w-4 h-4" /> Appearance</button>
+                    <button type="button" onClick={() => { dismissMenu(); void handleCopyMarkdown(); }} className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-[var(--bg-card)]"><Copy className="w-4 h-4" /> Copy Markdown</button>
+                    <button type="button" onClick={() => { dismissMenu(); void handleShare(); }} className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-[var(--bg-card)]"><Share2 className="w-4 h-4" /> Share</button>
+                    <button type="button" disabled={exportingPdf || savingAppearance} onClick={() => { dismissMenu(); void handleDownloadPdf(); }} className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-[var(--bg-card)] disabled:opacity-50"><Download className="w-4 h-4" /> Export PDF</button>
+                    <button type="button" onClick={() => { dismissMenu(); setIsExpanded(!isExpanded); }} className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-[var(--bg-card)]">
+                      {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}{isExpanded ? 'Restore split view' : 'Full screen'}
+                    </button>
+                  </>
+                )}
+              </div>
             )}
-          </button>
-
-          {/* Export / Download PDF */}
-          <button
-            type="button"
-            onClick={() => void handleDownloadPdf()}
-            disabled={exportingPdf || savingAppearance}
-            title="Download PDF"
-            aria-label="Download document PDF"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--text-primary)] hover:opacity-85 text-[var(--bg-primary)] text-xs font-semibold shadow-sm transition-colors"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>{exportingPdf ? 'Exporting…' : 'PDF'}</span>
-          </button>
-
-          {/* Expand / Collapse Full Width */}
-          <button
-            type="button"
-            onClick={() => setIsExpanded(!isExpanded)}
-            title={isExpanded ? 'Restore split view' : 'Maximize canvas'}
-            aria-label={isExpanded ? 'Restore split view' : 'Maximize document'}
-            className="p-1.5 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors ml-1"
-          >
-            {isExpanded ? (
-              <Minimize2 className="w-4 h-4" />
-            ) : (
-              <Maximize2 className="w-4 h-4" />
-            )}
-          </button>
-
-          {/* Close Panel */}
-          <button
-            type="button"
-            onClick={onClose}
-            title="Close canvas"
-            aria-label="Close document"
-            className="p-1.5 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close document" className="p-2 rounded-xl text-[var(--text-muted)] hover:bg-[var(--bg-card)]"><X className="w-5 h-5" /></button>
         </div>
       </div>
-
-      {/* Main Document Content Canvas */}
-      {copyError && <p role="alert" className="px-5 py-2 text-xs text-[var(--text-secondary)]">{copyError}</p>}
-      <div className="flex flex-wrap items-center gap-3 px-5 py-3 text-xs text-[var(--text-muted)]">
-        <label className="flex items-center gap-2">Appearance
-          <select aria-label="Document appearance" value={artifact.theme || 'editorial'} disabled={savingAppearance || exportingPdf} onChange={event => void saveAppearance(event.target.value)} className="rounded-lg bg-[var(--bg-card)] px-3 py-2 text-[var(--text-primary)]">
-            <option value="editorial">Editorial</option><option value="clean">Clean</option><option value="technical">Technical</option><option value="midnight">Midnight</option>
-          </select>
-        </label>
-        <span>{savingAppearance ? 'Saving…' : 'PDF uses this appearance'}</span>
-        {appearanceError && <span role="alert">{appearanceError}</span>}
-      </div>
+      {(copyError || appearanceError) && <p role="alert" className="px-5 py-2 text-xs text-[var(--text-secondary)]">{copyError || appearanceError}</p>}
+      {(copied || savingAppearance || exportingPdf) && <p role="status" className="px-5 py-2 text-xs text-[var(--text-muted)]">{exportingPdf ? 'Exporting PDF…' : savingAppearance ? 'Saving appearance…' : 'Document copied'}</p>}
       <div className="flex-1 overflow-y-auto px-3 sm:px-6 py-5 custom-scrollbar bg-[var(--bg-sidebar)]">
-        <article data-theme={artifact.theme || 'editorial'} className="document-paper max-w-3xl mx-auto rounded-2xl px-5 sm:px-10 py-8 sm:py-10 shadow-sm">
+        <article data-theme={artifact.theme || 'midnight'} className="document-paper max-w-3xl mx-auto rounded-2xl px-5 sm:px-10 py-8 sm:py-10 shadow-sm">
           {/* Header Title Block */}
           <div className="mb-8 pb-6 border-b border-[var(--bg-pill)]">
             <div className="flex flex-wrap items-center gap-2 mb-4 text-[11px] text-[var(--text-muted)] tracking-wide">

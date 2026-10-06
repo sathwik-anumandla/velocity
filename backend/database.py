@@ -177,7 +177,7 @@ def init_db() -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id);")
     artifact_columns = {row[1] for row in cursor.execute("PRAGMA table_info(artifacts)")}
     if "theme" not in artifact_columns:
-        cursor.execute("ALTER TABLE artifacts ADD COLUMN theme TEXT NOT NULL DEFAULT 'editorial'")
+        cursor.execute("ALTER TABLE artifacts ADD COLUMN theme TEXT NOT NULL DEFAULT 'midnight'")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_updated ON artifacts(updated_at DESC);")
 
     # 6. Integration Tokens table for OAuth (Google Workspace)
@@ -844,8 +844,8 @@ def create_artifact(
     cursor.execute("""
     INSERT INTO artifacts (
         id, session_id, message_id, title, artifact_type, language,
-        content, summary, version, file_path, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+        content, summary, version, file_path, created_at, updated_at, theme
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, 'midnight')
     """, (
         artifact_id, session_id, message_id, title, artifact_type, language,
         content, summary, file_path, now, now
@@ -863,6 +863,7 @@ def create_artifact(
         "content": content,
         "summary": summary,
         "version": 1,
+        "theme": "midnight",
         "file_path": file_path,
         "created_at": now,
         "updated_at": now,
@@ -910,9 +911,9 @@ def update_artifact(
     new_title = title if title is not None else current["title"]
     new_content = content if content is not None else current["content"]
     new_summary = summary if summary is not None else current["summary"]
-    if theme is not None and theme not in {"editorial", "clean", "technical", "midnight"}:
+    if theme is not None and theme not in {"editorial", "clean", "technical", "technical-dark", "midnight"}:
         raise ValueError("Unknown document theme")
-    new_theme = theme or current.get("theme", "editorial")
+    new_theme = theme or current.get("theme", "midnight")
     new_version = current["version"] + int(any(value is not None for value in (title, content, summary)))
     now = datetime.now(timezone.utc).isoformat()
 
