@@ -173,7 +173,7 @@ export const CodeBlock: FC<{ language?: string; value: string }> = ({ language, 
           title={copied ? 'Copied to clipboard' : 'Copy code'}
           className="p-1 rounded hover:bg-[var(--bg-card-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent-emerald)]" /> : <Copy className="w-3.5 h-3.5" />}
         </button>
       </div>
       <pre className="p-3.5 pt-1 overflow-x-auto font-mono text-[13.5px] sm:text-[14px] leading-relaxed">

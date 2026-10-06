@@ -98,6 +98,7 @@ export function App() {
 
   useEffect(() => {
     const root = document.documentElement;
+    root.classList.toggle('oled', theme === 'oled');
     if (theme === 'light') {
       root.classList.add('light');
       root.classList.remove('dark');
@@ -742,16 +743,16 @@ export function App() {
     >
       {/* 1. Floating Approval Card for Thread Proposal */}
       {pendingProposal && (
-        <div className="w-full mb-3 px-4 py-3 bg-[#18181b] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="w-full mb-3 px-4 py-3 bg-[var(--bg-card)] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-violet-500/15 text-violet-400 flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-violet-500/15 text-[var(--accent-violet)] flex items-center justify-center flex-shrink-0">
               <LineSquiggle className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-white truncate">
+              <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
                 {pendingProposal.proposal.title}
               </div>
-              <div className="text-xs text-neutral-400 truncate">
+              <div className="text-xs text-[var(--text-muted)] truncate">
                 {pendingProposal.proposal.reason || 'Proposed Thread'}
               </div>
             </div>
@@ -760,14 +761,14 @@ export function App() {
             <button
               type="button"
               onClick={() => handleDeclineProposal(pendingProposal.messageId)}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-95 transition-all"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-pill)] active:scale-95 transition-all"
             >
               Continue Here
             </button>
             <button
               type="button"
               onClick={() => handleAcceptProposal(pendingProposal.messageId)}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-black hover:bg-neutral-200 active:scale-95 transition-all"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-primary)] hover:opacity-85 active:scale-95 transition-all"
             >
               Approve
             </button>
@@ -777,30 +778,30 @@ export function App() {
 
       {/* 2. Floating Approval Card for Controlled Action (Gmail) */}
       {pendingAction && (
-        <div className="w-full mb-3 px-4 py-3 bg-[#18181b] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="w-full mb-3 px-4 py-3 bg-[var(--bg-card)] rounded-2xl flex items-center justify-between gap-4 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 flex items-center justify-center flex-shrink-0">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-[var(--accent-amber)] flex items-center justify-center flex-shrink-0">
               <Sparkles className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-semibold text-white truncate">
+              <div className="text-sm font-semibold text-[var(--text-primary)] truncate">
                 {pendingAction.action_type.replace(/_/g, ' ').toUpperCase()}: {pendingAction.parameters?.subject || pendingAction.parameters?.to || 'Action'}
               </div>
-              <div className="text-xs text-neutral-400 truncate">Requires your approval to send</div>
+              <div className="text-xs text-[var(--text-muted)] truncate">Requires your approval to send</div>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
               type="button"
               onClick={() => handleRespondAction(pendingAction.id, 'decline')}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-neutral-800 active:scale-95 transition-all"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-pill)] active:scale-95 transition-all"
             >
               Decline
             </button>
             <button
               type="button"
               onClick={() => handleRespondAction(pendingAction.id, 'confirm')}
-              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white text-black hover:bg-neutral-200 active:scale-95 transition-all"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-primary)] hover:opacity-85 active:scale-95 transition-all"
             >
               Approve
             </button>
@@ -810,8 +811,8 @@ export function App() {
 
       {/* 3. Slash Command Autocomplete Palette */}
       {isSlashOpen && slashItems.length > 0 && (
-        <div className="absolute bottom-full left-0 mb-3 w-84 rounded-2xl bg-[#141416] p-2 shadow-2xl z-50 text-white select-none animate-in fade-in duration-150">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 px-3 py-1">
+        <div className="absolute bottom-full left-0 mb-3 w-84 rounded-2xl bg-[var(--bg-card)] p-2 shadow-2xl z-50 text-[var(--text-primary)] select-none animate-in fade-in duration-150">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)] px-3 py-1">
             Skills & Commands
           </div>
           <div className="space-y-0.5">
@@ -826,15 +827,15 @@ export function App() {
                     textareaRef.current?.focus();
                   }}
                   className={`flex items-center gap-2.5 p-2 rounded-xl cursor-pointer active:scale-[0.98] transition-all ${
-                    idx === selectedSlashIdx ? 'bg-[#222227] text-white' : 'text-neutral-300 hover:bg-[#1a1a1e]'
+                    idx === selectedSlashIdx ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]' : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
                   }`}
                 >
-                  <div className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center shrink-0 text-neutral-400">
+                  <div className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center shrink-0 text-[var(--text-muted)]">
                     <IconComp className="w-3.5 h-3.5" />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xs font-semibold text-white">{item.label}</div>
-                    <div className="text-[11px] text-neutral-400 truncate">{item.desc}</div>
+                    <div className="text-xs font-semibold text-[var(--text-primary)]">{item.label}</div>
+                    <div className="text-[11px] text-[var(--text-muted)] truncate">{item.desc}</div>
                   </div>
                 </div>
               );
@@ -858,13 +859,13 @@ export function App() {
       />
 
       {/* Flat Input Capsule - Strictly Zero Borders */}
-      <div className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-[26px] bg-[#141416] shadow-2xl transition-all">
+      <div className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-[26px] bg-[var(--bg-card)] shadow-2xl transition-all">
         <button
           id="options-toggle-btn"
           type="button"
           onClick={() => setIsOptionsOpen(!isOptionsOpen)}
           title="Configure Effort, Recall & Model"
-          className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-[#1e1e22] text-neutral-300 hover:text-white hover:bg-[#252528] active:scale-95 transition-all"
+          className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-[var(--bg-card-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] active:scale-95 transition-all"
         >
           <Plus
             className={`w-4 h-4 transition-transform duration-150 ${
@@ -923,7 +924,7 @@ export function App() {
               : 'Message Velocity...'
           }
           rows={1}
-          className="flex-1 bg-transparent text-[15.5px] font-medium text-white placeholder-neutral-500 outline-none resize-none py-1.5 px-1 leading-snug max-h-40 border-none"
+          className="flex-1 bg-transparent text-[15.5px] font-medium text-[var(--text-primary)] placeholder-neutral-500 outline-none resize-none py-1.5 px-1 leading-snug max-h-40 border-none"
         />
 
         {isStreaming ? (
@@ -931,7 +932,7 @@ export function App() {
             type="button"
             onClick={handleStopStreaming}
             title="Stop generating"
-            className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-white text-black hover:opacity-90 active:scale-95 transition-all"
+            className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-[var(--text-primary)] text-[var(--bg-primary)] hover:opacity-90 active:scale-95 transition-all"
           >
             <Square className="w-3.5 h-3.5 fill-current" />
           </button>
@@ -941,10 +942,10 @@ export function App() {
             onClick={() => handleSendMessage()}
             disabled={!inputValue.trim()}
             title="Send message"
-            className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 active:scale-95 transition-all ${
+            className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 active:scale-95 transition-all ${
               inputValue.trim()
-                ? 'bg-white text-black hover:opacity-90'
-                : 'bg-[#1e1e22] text-neutral-600 cursor-not-allowed'
+                ? 'bg-[var(--text-primary)] text-[var(--bg-primary)] hover:opacity-90'
+                : 'bg-[var(--bg-card-hover)] text-[var(--text-dim)] cursor-not-allowed'
             }`}
           >
             <ArrowUp className="w-4 h-4" />
@@ -955,7 +956,7 @@ export function App() {
   );
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-[#000000] text-white font-sans">
+    <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg-card)] text-[var(--text-primary)] font-sans">
       {/* 1. Centered 5-Icon Navigation Rail */}
       <NavigationRail
         currentSessionId={currentSessionId}
@@ -981,24 +982,24 @@ export function App() {
       />
 
       {/* 2. Main Timeline / Side Chat Area */}
-      <main className="flex-1 flex flex-col h-full min-w-0 relative bg-[#000000]">
+      <main className="flex-1 flex flex-col h-full min-w-0 relative bg-[var(--bg-card)]">
         {/* Top Header - Bolder Centered Velocity Logo & Frictionless Thread Navigation */}
-        <header className="relative z-20 h-14 bg-[#000000] flex items-center justify-between px-6 flex-shrink-0 select-none">
+        <header className="relative z-20 h-14 bg-[var(--bg-card)] flex items-center justify-between px-6 flex-shrink-0 select-none">
           {activeThread ? (
             /* Thread Top Bar */
             <div className="flex items-center justify-between w-full">
               <button
                 type="button"
                 onClick={handleExitThread}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-neutral-400 hover:text-white hover:bg-[#141416] active:scale-95 transition-all"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] active:scale-95 transition-all"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Main Timeline</span>
               </button>
 
               <div className="flex items-center gap-2">
-                <LineSquiggle className="w-4 h-4 text-violet-400" />
-                <h2 className="text-sm font-semibold text-white truncate max-w-[280px] sm:max-w-md">
+                <LineSquiggle className="w-4 h-4 text-[var(--accent-violet)]" />
+                <h2 className="text-sm font-semibold text-[var(--text-primary)] truncate max-w-[280px] sm:max-w-md">
                   {activeThread.name}
                 </h2>
               </div>
@@ -1009,7 +1010,7 @@ export function App() {
             /* Main Continuous Timeline Top Bar - Bolder Logo Centered */
             <div className="flex items-center justify-center w-full relative">
               <div className="flex items-center gap-2">
-                <span className="text-lg sm:text-xl font-black tracking-tight text-white">
+                <span className="text-lg sm:text-xl font-black tracking-tight text-[var(--text-primary)]">
                   Velocity
                 </span>
               </div>
@@ -1024,7 +1025,7 @@ export function App() {
               <h1
                 onClick={() => setGreeting((prev) => getGreetingForCurrentTime(prev))}
                 title="Click to shuffle greeting"
-                className="text-3xl sm:text-4xl font-bold tracking-tight text-white mb-8 text-center font-sans cursor-pointer hover:opacity-80 active:scale-[0.99] transition-all"
+                className="text-3xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] mb-8 text-center font-sans cursor-pointer hover:opacity-80 active:scale-[0.99] transition-all"
               >
                 {activeThread ? activeThread.name : greeting}
               </h1>
@@ -1033,6 +1034,7 @@ export function App() {
           </div>
         ) : (
           <div className="relative flex-1 flex flex-col min-h-0">
+            <div className="relative flex-1 min-h-0 flex flex-col">
             <div
               ref={chatScrollRef}
               onScroll={handleScroll}
@@ -1046,7 +1048,7 @@ export function App() {
                     <div key={msg.id} className="w-full flex flex-col">
                       {isNewDay && (
                         <div className="w-full flex items-center justify-center my-2.5 select-none">
-                          <span className="text-[11px] font-medium text-neutral-500 uppercase tracking-wider">
+                          <span className="text-[11px] font-medium text-[var(--text-dim)] uppercase tracking-wider">
                             {formatDateDivider(msg.created_at)}
                           </span>
                         </div>
@@ -1072,7 +1074,7 @@ export function App() {
 
             {/* Scroll to Bottom Button */}
             {isUserScrolledUp && (
-              <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 animate-fade-in pointer-events-auto">
+              <div className="absolute bottom-4 right-5 sm:right-10 z-30 animate-fade-in pointer-events-auto">
                 <button
                   type="button"
                   onClick={() => {
@@ -1080,13 +1082,15 @@ export function App() {
                     setIsUserScrolledUp(false);
                     scrollToBottom(true);
                   }}
-                  title="Scroll to bottom"
-                  className="w-9 h-9 rounded-full flex items-center justify-center bg-[#1e1e22] hover:bg-[#252528] text-white shadow-xl transition-all cursor-pointer select-none active:scale-95"
+                  title="Jump to latest"
+                  aria-label="Jump to latest"
+                  className="w-12 h-12 rounded-full flex items-center justify-center bg-[var(--bg-card-hover)] hover:bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-xl transition-all cursor-pointer select-none active:scale-95"
                 >
                   <ArrowDown className="w-4 h-4" />
                 </button>
               </div>
             )}
+            </div>
 
             {/* Bottom Floating Input Capsule */}
             <div className="p-3 sm:pb-5 sm:px-8 flex-shrink-0 flex justify-center w-full">

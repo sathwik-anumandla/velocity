@@ -24,12 +24,12 @@ export function DeploymentInfo() {
   }, []);
 
   const staleBrowser = version && __APP_REVISION__ !== 'unknown' && version.frontend_revision !== 'unknown' && __APP_REVISION__ !== version.frontend_revision;
-  return <section className="rounded-2xl bg-[#0d0d0f] p-4 space-y-2 text-neutral-400">
-    <h3 className="text-sm font-semibold text-white">Deployment</h3>
+  return <section className="rounded-2xl bg-[var(--bg-code)] p-4 space-y-2 text-[var(--text-muted)]">
+    <h3 className="text-sm font-semibold text-[var(--text-primary)]">Deployment</h3>
     <p>Browser build: {__APP_REVISION__.slice(0, 12)}</p>
     {version && <p>Backend {version.version}: {version.backend_revision.slice(0, 12)} · Web: {version.frontend_revision.slice(0, 12)}</p>}
-    {version?.matches === false && <p className="text-amber-400">Backend and web builds differ. Rebuild and redeploy the backend image.</p>}
-    {staleBrowser && <p className="text-amber-400">This browser has an older build. Reload to load the deployed version.</p>}
+    {version?.matches === false && <p className="text-[var(--accent-amber)]">Backend and web builds differ. Rebuild and redeploy the backend image.</p>}
+    {staleBrowser && <p className="text-[var(--accent-amber)]">This browser has an older build. Reload to load the deployed version.</p>}
     {error && <p>Version information unavailable: {error}</p>}
   </section>;
 }

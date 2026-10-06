@@ -100,7 +100,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
   if (isUser) {
     return (
       <div className="flex flex-col items-end mb-2 group w-full select-none">
-        <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#1e1e22] px-4 py-2 text-neutral-100 shadow-sm border-none">
+        <div className="w-fit max-w-[90%] sm:max-w-[78%] rounded-2xl bg-[var(--bg-card-hover)] px-4 py-3 text-[var(--text-primary)] shadow-sm border-none break-words">
           {isEditing ? (
             <div className="flex flex-col gap-2 min-w-[280px] sm:min-w-[380px]">
               <textarea
@@ -116,7 +116,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
                     setEditText(message.content);
                   }
                 }}
-                className="w-full p-2 text-[15px] font-medium bg-[#141416] rounded-xl text-white outline-none resize-none border-none"
+                className="w-full p-2 text-[15px] font-medium bg-[var(--bg-card)] rounded-xl text-[var(--text-primary)] outline-none resize-none border-none"
                 rows={Math.min(6, Math.max(2, editText.split('\n').length))}
                 autoFocus
               />
@@ -127,21 +127,21 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
                     setIsEditing(false);
                     setEditText(message.content);
                   }}
-                  className="px-3 py-1.5 text-neutral-400 hover:text-white rounded-lg transition-colors"
+                  className="px-3 py-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveEdit}
-                  className="px-3 py-1.5 bg-white text-black font-semibold rounded-lg hover:opacity-90 transition-opacity"
+                  className="px-3 py-1.5 bg-[var(--text-primary)] text-[var(--bg-primary)] font-semibold rounded-lg hover:opacity-90 transition-opacity"
                 >
                   Send
                 </button>
               </div>
             </div>
           ) : (
-            <p className="text-[15.5px] font-medium leading-relaxed whitespace-pre-wrap selection:bg-neutral-700">
+            <p className="text-[15.5px] font-medium leading-relaxed whitespace-pre-wrap selection:bg-[var(--bg-pill-hover)]">
               {message.content}
             </p>
           )}
@@ -154,9 +154,9 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
               type="button"
               onClick={handleCopy}
               title="Copy"
-              className="p-1 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-[#18181b] transition-colors"
+              className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors"
             >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent-emerald)]" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
             <button
               type="button"
@@ -165,7 +165,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
                 setIsEditing(true);
               }}
               title="Edit"
-              className="p-1 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-[#18181b] transition-colors"
+              className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors"
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
@@ -185,33 +185,33 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
               onOpenThread?.(message.thread_id);
             }
           }}
-          className="flex flex-col gap-2 max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#16161a] hover:bg-[#1c1c22] p-4 text-neutral-100 shadow-sm border-none transition-all cursor-pointer group/rollup"
+          className="flex flex-col gap-2 max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[var(--bg-card)] hover:bg-[var(--bg-card)] p-4 text-[var(--text-primary)] shadow-sm border-none transition-all cursor-pointer group/rollup"
         >
           <div className="flex items-center justify-between gap-3 w-full">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-violet-500/15 text-violet-400 flex items-center justify-center flex-shrink-0 group-hover/rollup:scale-105 transition-transform">
+              <div className="w-7 h-7 rounded-lg bg-violet-500/15 text-[var(--accent-violet)] flex items-center justify-center flex-shrink-0 group-hover/rollup:scale-105 transition-transform">
                 <LineSquiggle className="w-3.5 h-3.5" />
               </div>
-              <span className="text-xs font-semibold text-white tracking-tight truncate">
+              <span className="text-xs font-semibold text-[var(--text-primary)] tracking-tight truncate">
                 {threadRollup.title}
               </span>
             </div>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-violet-400 bg-violet-500/10 px-2 py-0.5 rounded-full shrink-0">
+            <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--accent-violet)] bg-violet-500/10 px-2 py-0.5 rounded-full shrink-0">
               {threadRollup.type}
             </span>
           </div>
 
           {threadRollup.summary ? (
-            <p className="text-[13.5px] leading-relaxed text-neutral-300 font-normal">
+            <p className="text-[13.5px] leading-relaxed text-[var(--text-secondary)] font-normal">
               {threadRollup.summary}
             </p>
           ) : (
-            <p className="text-[12px] text-neutral-500 italic">
+            <p className="text-[12px] text-[var(--text-dim)] italic">
               Side chat active. Click to view discussion.
             </p>
           )}
 
-          <div className="flex items-center gap-1.5 text-[11px] font-medium text-neutral-500 group-hover/rollup:text-violet-300 transition-colors pt-0.5">
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-dim)] group-hover/rollup:text-[var(--accent-violet)] transition-colors pt-0.5">
             <span>Open Thread</span>
             <ArrowRight className="w-3 h-3" />
           </div>
@@ -230,14 +230,14 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
       {proposal && proposal.status === 'accepted' && proposal.thread_id && (
         <div
           onClick={() => onOpenThread?.(proposal!.thread_id!)}
-          className="mb-3 flex items-center gap-3.5 bg-[#1c1c1e] hover:bg-[#252528] active:scale-[0.98] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
+          className="mb-3 flex items-center gap-3.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] active:scale-[0.98] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
         >
-          <div className="w-9 h-9 rounded-xl bg-violet-500/15 text-violet-400 flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
+          <div className="w-9 h-9 rounded-xl bg-violet-500/15 text-[var(--accent-violet)] flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
             <LineSquiggle className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-white truncate">{proposal.title}</div>
-            <div className="text-xs text-neutral-400">Thread</div>
+            <div className="text-sm font-semibold text-[var(--text-primary)] truncate">{proposal.title}</div>
+            <div className="text-xs text-[var(--text-muted)]">Thread</div>
           </div>
         </div>
       )}
@@ -246,14 +246,14 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
       {message.artifact && (
         <div
           onClick={() => onOpenArtifact?.(message.artifact!)}
-          className="mb-3 flex items-center gap-3.5 bg-[#1c1c1e] hover:bg-[#252528] active:scale-[0.98] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
+          className="mb-3 flex items-center gap-3.5 bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] active:scale-[0.98] rounded-2xl px-4 py-2.5 cursor-pointer max-w-sm transition-all select-none border-none group/pill shadow-md"
         >
-          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-[var(--accent-emerald)] flex items-center justify-center flex-shrink-0 group-hover/pill:scale-105 transition-transform">
             <FileCode2 className="w-4 h-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold text-white truncate">{message.artifact.title}</div>
-            <div className="text-xs text-neutral-400">Artifact</div>
+            <div className="text-sm font-semibold text-[var(--text-primary)] truncate">{message.artifact.title}</div>
+            <div className="text-xs text-[var(--text-muted)]">Artifact</div>
           </div>
         </div>
       )}
@@ -261,16 +261,16 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
       {/* Message Body */}
       {isThread ? (
         /* Side Chat (Engineering Workspace Layout) */
-        <div className="w-full text-neutral-100 font-medium prose-velocity">
+        <div className="w-full text-[var(--text-primary)] font-medium prose-velocity">
           {message.content ? (
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
                 ul({ children }) {
-                  return <ul className="list-disc pl-5 my-2 space-y-1 marker:text-neutral-500">{children}</ul>;
+                  return <ul className="list-disc pl-5 my-2 space-y-1 marker:text-[var(--text-dim)]">{children}</ul>;
                 },
                 ol({ children }) {
-                  return <ol className="list-decimal pl-5 my-2 space-y-1 marker:text-neutral-500">{children}</ol>;
+                  return <ol className="list-decimal pl-5 my-2 space-y-1 marker:text-[var(--text-dim)]">{children}</ol>;
                 },
                 li({ children }) {
                   return <li className="leading-relaxed pl-1">{children}</li>;
@@ -286,7 +286,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
                   }
                   return (
                     <code
-                      className="px-1.5 py-0.5 rounded font-mono text-[13.5px] bg-[#18181b] text-sky-300"
+                      className="px-1.5 py-0.5 rounded font-mono text-[13.5px] bg-[var(--bg-card)] text-[var(--accent-blue)]"
                       {...props}
                     >
                       {children}
@@ -302,7 +302,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
             </ReactMarkdown>
           ) : message.isStreaming ? (
             <div className="flex items-center py-1.5 select-none">
-              <span className="shimmer-text text-[15px] font-medium tracking-tight text-neutral-400">
+              <span className="shimmer-text text-[15px] font-medium tracking-tight text-[var(--text-muted)]">
                 {message.statusText || 'Thinking...'}
               </span>
             </div>
@@ -312,46 +312,46 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
         /* Main Timeline (Peer-to-Peer Capsule Layout) */
         message.isStreaming && !displayContent ? (
           /* 3-Dot Bouncing Typing Indicator for Atomic Delivery */
-          <div className="flex items-center gap-1.5 bg-[#1a1a1e] px-4 py-2.5 rounded-2xl w-fit shadow-sm">
+          <div className="flex items-center gap-1.5 bg-[var(--bg-card)] px-4 py-2.5 rounded-2xl w-fit shadow-sm">
             <span
-              className="w-2 h-2 rounded-full bg-neutral-400 animate-bounce"
+              className="w-2 h-2 rounded-full bg-[var(--text-muted)] animate-bounce"
               style={{ animationDelay: '0ms' }}
             />
             <span
-              className="w-2 h-2 rounded-full bg-neutral-400 animate-bounce"
+              className="w-2 h-2 rounded-full bg-[var(--text-muted)] animate-bounce"
               style={{ animationDelay: '150ms' }}
             />
             <span
-              className="w-2 h-2 rounded-full bg-neutral-400 animate-bounce"
+              className="w-2 h-2 rounded-full bg-[var(--text-muted)] animate-bounce"
               style={{ animationDelay: '300ms' }}
             />
           </div>
         ) : displayContent ? (
-          <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-[#1a1a1e] px-4 py-2.5 text-neutral-100 shadow-sm border-none">
+          <div className="w-fit min-w-0 max-w-[90%] sm:max-w-[78%] rounded-2xl bg-[var(--bg-card)] px-4 py-3 text-[var(--text-primary)] shadow-sm border-none break-words">
             {/* Proactive Glowing Routine Header */}
             {routine && (
               <div
                 className={`text-[11px] font-bold tracking-wider uppercase mb-1.5 select-none ${
                   routine.type === 'briefing'
-                    ? 'text-amber-400 [text-shadow:0_0_12px_rgba(245,158,11,0.6)]'
+                    ? 'text-[var(--accent-amber)] [text-shadow:0_0_12px_rgba(245,158,11,0.6)]'
                     : routine.type === 'reflection'
                     ? 'text-indigo-400 [text-shadow:0_0_12px_rgba(99,102,241,0.6)]'
-                    : 'text-sky-400 [text-shadow:0_0_12px_rgba(14,165,233,0.6)]'
+                    : 'text-[var(--accent-blue)] [text-shadow:0_0_12px_rgba(14,165,233,0.6)]'
                 }`}
               >
                 {routine.label}
               </div>
             )}
 
-            <div className="prose-velocity text-[15px] leading-relaxed text-neutral-100 font-medium">
+            <div className="prose-velocity text-[15px] leading-relaxed text-[var(--text-primary)] font-medium">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
                   ul({ children }) {
-                    return <ul className="list-disc pl-5 my-1.5 space-y-1 marker:text-neutral-500">{children}</ul>;
+                    return <ul className="list-disc pl-5 my-1.5 space-y-1 marker:text-[var(--text-dim)]">{children}</ul>;
                   },
                   ol({ children }) {
-                    return <ol className="list-decimal pl-5 my-1.5 space-y-1 marker:text-neutral-500">{children}</ol>;
+                    return <ol className="list-decimal pl-5 my-1.5 space-y-1 marker:text-[var(--text-dim)]">{children}</ol>;
                   },
                   li({ children }) {
                     return <li className="leading-relaxed pl-1">{children}</li>;
@@ -367,7 +367,7 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
                     }
                     return (
                       <code
-                        className="px-1.5 py-0.5 rounded font-mono text-[13.5px] bg-[#1e1e24] text-sky-300"
+                        className="px-1.5 py-0.5 rounded font-mono text-[13.5px] bg-[var(--bg-card-hover)] text-[var(--accent-blue)]"
                         {...props}
                       >
                         {children}
@@ -393,16 +393,16 @@ export const ChatMessageView: FC<ChatMessageViewProps> = ({
             type="button"
             onClick={handleCopy}
             title="Copy response"
-            className="p-1 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-[#18181b] transition-colors"
+            className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? <Check className="w-3.5 h-3.5 text-[var(--accent-emerald)]" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
           {onRegenerate && (
             <button
               type="button"
               onClick={() => onRegenerate(message.id)}
               title="Regenerate turn"
-              className="p-1 rounded-lg text-neutral-500 hover:text-neutral-200 hover:bg-[#18181b] transition-colors"
+              className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-secondary)] hover:bg-[var(--bg-card)] transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>

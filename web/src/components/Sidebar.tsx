@@ -255,7 +255,7 @@ export const Sidebar: FC<SidebarProps> = ({
                           setMenuOpenId(null);
                           setSessionToDelete(session);
                         }}
-                        className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 text-red-500 hover:text-red-400 transition-colors text-left font-medium"
+                        className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 text-red-500 hover:text-[var(--accent-red)] transition-colors text-left font-medium"
                       >
                         <Trash2 className="w-3.5 h-3.5 text-red-500" />
                         <span>Delete</span>
@@ -395,7 +395,7 @@ export const Sidebar: FC<SidebarProps> = ({
                   onDeleteSession(sessionToDelete.id);
                   setSessionToDelete(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white transition-colors font-medium text-xs shadow-sm shadow-red-950/30"
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-[var(--text-primary)] transition-colors font-medium text-xs shadow-sm shadow-red-950/30"
               >
                 Delete
               </button>

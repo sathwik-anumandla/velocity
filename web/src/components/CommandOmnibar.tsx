@@ -229,12 +229,12 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-xl rounded-2xl bg-[#121214] shadow-[0_24px_70px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden text-neutral-100"
+        className="w-full max-w-xl rounded-2xl bg-[var(--bg-card)] shadow-[0_24px_70px_rgba(0,0,0,0.85)] flex flex-col overflow-hidden text-[var(--text-primary)]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search Input Bar */}
-        <div className="flex items-center gap-3 px-4 py-3.5 bg-[#18181b]">
-          <Search className="w-4 h-4 text-neutral-400 shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3.5 bg-[var(--bg-card)]">
+          <Search className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -245,7 +245,7 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
             }}
             onKeyDown={handleKeyDown}
             placeholder="Type a command or search messages..."
-            className="w-full text-sm font-medium bg-transparent text-white placeholder-neutral-500 outline-none border-none"
+            className="w-full text-sm font-medium bg-transparent text-[var(--text-primary)] placeholder-neutral-500 outline-none border-none"
           />
           {query ? (
             <button
@@ -256,12 +256,12 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
                 setSelectedIndex(0);
                 inputRef.current?.focus();
               }}
-              className="p-1 rounded-lg text-neutral-500 hover:text-white transition-colors"
+              className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           ) : (
-            <div className="flex items-center gap-1 font-mono text-[10px] text-neutral-500 bg-[#222226] px-1.5 py-0.5 rounded">
+            <div className="flex items-center gap-1 font-mono text-[10px] text-[var(--text-dim)] bg-[var(--bg-card-hover)] px-1.5 py-0.5 rounded">
               <span>ESC</span>
             </div>
           )}
@@ -271,7 +271,7 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
         <div className="max-h-[380px] overflow-y-auto p-2 space-y-1">
           {filteredCommands.length > 0 && (
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 px-3 py-1.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)] px-3 py-1.5">
                 Commands & Navigation
               </div>
               {filteredCommands.map((item, idx) => {
@@ -284,14 +284,14 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
                     onMouseEnter={() => setSelectedIndex(idx)}
                     className={`flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
                       isSelected
-                        ? 'bg-[#1e1e24] text-white shadow-sm'
-                        : 'text-neutral-300 hover:bg-[#18181b]'
+                        ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm'
+                        : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
                     }`}
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div
                         className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                          isSelected ? 'bg-white/10 text-white' : 'bg-[#18181b] text-neutral-400'
+                          isSelected ? 'bg-[var(--bg-pill)] text-[var(--text-primary)]' : 'bg-[var(--bg-card)] text-[var(--text-muted)]'
                         }`}
                       >
                         <IconComponent className="w-3.5 h-3.5" />
@@ -299,12 +299,12 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
                       <div className="min-w-0">
                         <div className="text-xs font-semibold truncate">{item.label}</div>
                         {item.sublabel && (
-                          <div className="text-[11px] text-neutral-400 truncate">{item.sublabel}</div>
+                          <div className="text-[11px] text-[var(--text-muted)] truncate">{item.sublabel}</div>
                         )}
                       </div>
                     </div>
                     {isSelected && (
-                      <CornerDownLeft className="w-3.5 h-3.5 text-neutral-400 shrink-0 ml-2" />
+                      <CornerDownLeft className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0 ml-2" />
                     )}
                   </div>
                 );
@@ -315,12 +315,12 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
           {/* Live Message Search Results */}
           {query.trim() && (
             <div className="pt-2">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500 px-3 py-1.5 flex items-center justify-between">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-dim)] px-3 py-1.5 flex items-center justify-between">
                 <span>Matching Messages</span>
-                {isSearching && <span className="text-[10px] text-neutral-400 lowercase font-mono">searching...</span>}
+                {isSearching && <span className="text-[10px] text-[var(--text-muted)] lowercase font-mono">searching...</span>}
               </div>
               {searchResults.length === 0 && !isSearching ? (
-                <div className="px-3 py-3 text-xs text-neutral-500 text-center">
+                <div className="px-3 py-3 text-xs text-[var(--text-dim)] text-center">
                   No matching messages found
                 </div>
               ) : (
@@ -337,12 +337,12 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
                       onMouseEnter={() => setSelectedIndex(itemIdx)}
                       className={`flex flex-col gap-1 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
                         isSelected
-                          ? 'bg-[#1e1e24] text-white shadow-sm'
-                          : 'text-neutral-300 hover:bg-[#18181b]'
+                          ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm'
+                          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-[11px] text-neutral-500">
-                        <span className="font-medium text-neutral-300 truncate max-w-[240px]">
+                      <div className="flex items-center justify-between text-[11px] text-[var(--text-dim)]">
+                        <span className="font-medium text-[var(--text-secondary)] truncate max-w-[240px]">
                           {result.session_name || 'Timeline'}
                         </span>
                         <span className="font-mono text-[10px]">
@@ -352,7 +352,7 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
                           })}
                         </span>
                       </div>
-                      <p className="text-xs text-neutral-300 line-clamp-2 leading-relaxed font-mono">
+                      <p className="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed font-mono">
                         {result.snippet || result.content}
                       </p>
                     </div>
@@ -364,7 +364,7 @@ export const CommandOmnibar: FC<CommandOmnibarProps> = ({
         </div>
 
         {/* Bottom Keyboard Hint Dock */}
-        <div className="px-4 py-2 bg-[#0c0c0e] flex items-center justify-between text-[10px] text-neutral-500 font-mono">
+        <div className="px-4 py-2 bg-[var(--bg-card)] flex items-center justify-between text-[10px] text-[var(--text-dim)] font-mono">
           <div className="flex items-center gap-3">
             <span>↑↓ Navigate</span>
             <span>↵ Select</span>

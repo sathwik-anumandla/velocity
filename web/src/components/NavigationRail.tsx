@@ -185,7 +185,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
   return (
     <div className="flex h-full select-none shrink-0 z-30">
       {/* 1. Vertically Centered Rail (64px) */}
-      <nav className="w-16 h-full bg-[#000000] flex flex-col items-center py-5 justify-between">
+      <nav className="w-16 h-full bg-[var(--bg-card)] flex flex-col items-center py-5 justify-between">
         {/* Top spacer to vertically balance the rail */}
         <div className="flex-1" />
 
@@ -198,8 +198,8 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             title="Threads"
             className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-all duration-150 ${
               activeFlyout === 'threads'
-                ? 'bg-[#1e1e22] text-white shadow-sm'
-                : 'text-neutral-400 hover:text-white hover:bg-[#141416]'
+                ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
             }`}
           >
             <LineSquiggle className="w-5 h-5" />
@@ -212,8 +212,8 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             title="Search Messages"
             className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-all duration-150 ${
               activeFlyout === 'search'
-                ? 'bg-[#1e1e22] text-white shadow-sm'
-                : 'text-neutral-400 hover:text-white hover:bg-[#141416]'
+                ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
             }`}
           >
             <Search className="w-5 h-5" />
@@ -226,8 +226,8 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             title="Documents"
             className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-all duration-150 ${
               activeFlyout === 'documents'
-                ? 'bg-[#1e1e22] text-white shadow-sm'
-                : 'text-neutral-400 hover:text-white hover:bg-[#141416]'
+                ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
             }`}
           >
             <FileCode2 className="w-5 h-5" />
@@ -240,8 +240,8 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             title="Shared Links"
             className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-all duration-150 ${
               activeFlyout === 'links'
-                ? 'bg-[#1e1e22] text-white shadow-sm'
-                : 'text-neutral-400 hover:text-white hover:bg-[#141416]'
+                ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
             }`}
           >
             <Compass className="w-5 h-5" />
@@ -254,8 +254,8 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             title="Chronology"
             className={`w-11 h-11 rounded-2xl flex items-center justify-center active:scale-95 transition-all duration-150 ${
               activeFlyout === 'chronology'
-                ? 'bg-[#1e1e22] text-white shadow-sm'
-                : 'text-neutral-400 hover:text-white hover:bg-[#141416]'
+                ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
             }`}
           >
             <History className="w-5 h-5" />
@@ -267,7 +267,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               type="button"
               onClick={onOpenSettings}
               title="Settings"
-              className="w-11 h-11 rounded-2xl flex items-center justify-center text-neutral-400 hover:text-white hover:bg-[#141416] active:scale-95 transition-all duration-150"
+              className="w-11 h-11 rounded-2xl flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)] active:scale-95 transition-all duration-150"
             >
               <SlidersHorizontal className="w-5 h-5" />
             </button>
@@ -281,7 +281,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               type="button"
               onClick={handleToggleStatus}
               title={`System Status: ${isHealthy ? 'Healthy' : 'Degraded'}`}
-              className="w-10 h-10 rounded-2xl flex items-center justify-center hover:bg-[#141416] transition-colors"
+              className="w-10 h-10 rounded-2xl flex items-center justify-center hover:bg-[var(--bg-card)] transition-colors"
             >
               <span
                 className={`w-2 h-2 rounded-full ${
@@ -294,7 +294,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
 
             {/* Health Flyout Popover */}
             {isStatusOpen && (
-              <div className="absolute left-full bottom-0 ml-3 w-80 bg-[#121214] rounded-2xl p-4 shadow-2xl z-50 text-white animate-in fade-in duration-150">
+              <div className="absolute left-full bottom-0 ml-3 w-80 bg-[var(--bg-card)] rounded-2xl p-4 shadow-2xl z-50 text-[var(--text-primary)] animate-in fade-in duration-150">
                 <div className="flex items-center justify-between pb-3 mb-3">
                   <div className="flex items-center gap-2">
                     <span
@@ -304,39 +304,39 @@ export const NavigationRail: FC<NavigationRailProps> = ({
                     />
                     <h4 className="text-xs font-semibold tracking-tight">System Telemetry</h4>
                   </div>
-                  <span className="text-[10px] font-mono text-neutral-400 uppercase">
+                  <span className="text-[10px] font-mono text-[var(--text-muted)] uppercase">
                     {isHealthy ? 'Operational' : 'Attention'}
                   </span>
                 </div>
 
                 <div className="space-y-2 text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-400">Backend Server</span>
-                    <span className="text-neutral-200 font-mono">
+                    <span className="text-[var(--text-muted)]">Backend Server</span>
+                    <span className="text-[var(--text-secondary)] font-mono">
                       {isBackendOnline ? 'Online (8000)' : 'Offline'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-400">Database & FTS5</span>
-                    <span className="text-neutral-200 font-mono">
+                    <span className="text-[var(--text-muted)]">Database & FTS5</span>
+                    <span className="text-[var(--text-secondary)] font-mono">
                       {health?.database || 'Connected'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-400">Hindsight Engine</span>
-                    <span className="text-neutral-200 font-mono">
+                    <span className="text-[var(--text-muted)]">Hindsight Engine</span>
+                    <span className="text-[var(--text-secondary)] font-mono">
                       {health?.hindsight || 'Operational'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-neutral-400">Backend Core</span>
-                    <span className="text-neutral-200 font-mono">
+                    <span className="text-[var(--text-muted)]">Backend Core</span>
+                    <span className="text-[var(--text-secondary)] font-mono">
                       {health?.backend || 'Online (8000)'}
                     </span>
                   </div>
                 </div>
 
-                <div className="mt-3 pt-3 flex items-center justify-between text-[10px] text-neutral-500 font-mono">
+                <div className="mt-3 pt-3 flex items-center justify-between text-[10px] text-[var(--text-dim)] font-mono">
                   <span>Velocity Core</span>
                   <span>v2.1</span>
                 </div>
@@ -348,19 +348,19 @@ export const NavigationRail: FC<NavigationRailProps> = ({
 
       {/* 2. Slide-out Flyout Panel (300px) - Minimal, Subtle & Flat */}
       {activeFlyout !== 'none' && (
-        <aside className="w-80 h-full bg-[#0a0a0c] flex flex-col shadow-[20px_0_40px_rgba(0,0,0,0.8)] z-20 animate-in slide-in-from-left-2 duration-150">
+        <aside className="w-80 h-full bg-[var(--bg-card)] flex flex-col shadow-[20px_0_40px_rgba(0,0,0,0.8)] z-20 animate-in slide-in-from-left-2 duration-150">
           {/* A. THREADS FLYOUT */}
           {activeFlyout === 'threads' && (
             <div className="flex flex-col h-full">
               <div className="px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <LineSquiggle className="w-4 h-4 text-violet-400" />
-                  <h3 className="text-sm font-semibold text-white tracking-tight">Threads</h3>
+                  <LineSquiggle className="w-4 h-4 text-[var(--accent-violet)]" />
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">Threads</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => onSelectFlyout('none')}
-                  className="p-1 rounded-lg text-neutral-500 hover:text-white transition-colors"
+                  className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -371,8 +371,8 @@ export const NavigationRail: FC<NavigationRailProps> = ({
                 {threads.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-48 text-center px-4">
                     <LineSquiggle className="w-6 h-6 text-neutral-700 mb-2" />
-                    <p className="text-xs text-neutral-400">No threads found</p>
-                    <p className="text-[11px] text-neutral-600 mt-1">
+                    <p className="text-xs text-[var(--text-muted)]">No threads found</p>
+                    <p className="text-[11px] text-[var(--text-dim)] mt-1">
                       Type /thread [topic] in chat to branch a focused thread.
                     </p>
                   </div>
@@ -388,25 +388,25 @@ export const NavigationRail: FC<NavigationRailProps> = ({
                         }}
                         className={`group px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
                           isSelected
-                            ? 'bg-[#1c1c20] text-white shadow-sm'
-                            : 'hover:bg-[#141416] text-neutral-300'
+                            ? 'bg-[var(--bg-card)] text-[var(--text-primary)] shadow-sm'
+                            : 'hover:bg-[var(--bg-card)] text-[var(--text-secondary)]'
                         }`}
                       >
                         <div className="flex items-baseline justify-between gap-2">
-                          <h4 className="text-[13px] font-medium truncate flex-1 text-neutral-200 group-hover:text-white">
+                          <h4 className="text-[13px] font-medium truncate flex-1 text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">
                             {t.name}
                           </h4>
-                          <span className="text-[10px] font-mono text-neutral-500 shrink-0">
+                          <span className="text-[10px] font-mono text-[var(--text-dim)] shrink-0">
                             {formatTimestamp(t.updated_at || t.created_at)}
                           </span>
                         </div>
 
                         {t.rollup_summary ? (
-                          <p className="text-[11.5px] text-neutral-400 truncate mt-0.5 font-normal">
+                          <p className="text-[11.5px] text-[var(--text-muted)] truncate mt-0.5 font-normal">
                             {t.rollup_summary}
                           </p>
                         ) : (
-                          <p className="text-[10.5px] text-neutral-500 font-mono mt-0.5">
+                          <p className="text-[10.5px] text-[var(--text-dim)] font-mono mt-0.5">
                             {t.message_count || 0} messages
                           </p>
                         )}
@@ -423,13 +423,13 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             <div className="flex flex-col h-full">
               <div className="px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Search className="w-4 h-4 text-neutral-400" />
-                  <h3 className="text-sm font-semibold text-white tracking-tight">Search</h3>
+                  <Search className="w-4 h-4 text-[var(--text-muted)]" />
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">Search</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => onSelectFlyout('none')}
-                  className="p-1 rounded-lg text-neutral-500 hover:text-white transition-colors"
+                  className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -437,20 +437,20 @@ export const NavigationRail: FC<NavigationRailProps> = ({
 
               <div className="px-3 pb-2">
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-neutral-500" />
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[var(--text-dim)]" />
                   <input
                     type="text"
                     placeholder="Search messages..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     autoFocus
-                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-[#141416] rounded-xl text-white placeholder-neutral-500 border-none outline-none"
+                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--bg-card)] rounded-xl text-[var(--text-primary)] placeholder-neutral-500 border-none outline-none"
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-2.5 top-2.5 text-neutral-500 hover:text-white"
+                      className="absolute right-2.5 top-2.5 text-[var(--text-dim)] hover:text-[var(--text-primary)]"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -461,9 +461,9 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               {/* Minimal Search Results List */}
               <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-1">
                 {isSearching ? (
-                  <div className="py-8 text-center text-xs text-neutral-500 font-mono">Searching...</div>
+                  <div className="py-8 text-center text-xs text-[var(--text-dim)] font-mono">Searching...</div>
                 ) : searchResults.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-neutral-500">
+                  <div className="py-12 text-center text-xs text-[var(--text-dim)]">
                     {searchQuery.trim() ? 'No matching messages found' : 'Type to search messages and code'}
                   </div>
                 ) : (
@@ -474,15 +474,15 @@ export const NavigationRail: FC<NavigationRailProps> = ({
                         onSelectSession(item.session_id);
                         onSelectFlyout('none');
                       }}
-                      className="px-3 py-2 rounded-xl hover:bg-[#141416] cursor-pointer transition-all group"
+                      className="px-3 py-2 rounded-xl hover:bg-[var(--bg-card)] cursor-pointer transition-all group"
                     >
-                      <div className="flex items-baseline justify-between text-[11px] text-neutral-500 mb-0.5">
-                        <span className="font-medium text-neutral-300 truncate max-w-[200px] group-hover:text-white">
+                      <div className="flex items-baseline justify-between text-[11px] text-[var(--text-dim)] mb-0.5">
+                        <span className="font-medium text-[var(--text-secondary)] truncate max-w-[200px] group-hover:text-[var(--text-primary)]">
                           {item.session_name || 'Timeline'}
                         </span>
                         <span className="font-mono text-[10px]">{formatTimestamp(item.created_at)}</span>
                       </div>
-                      <p className="text-xs text-neutral-400 line-clamp-2 leading-relaxed font-mono">
+                      <p className="text-xs text-[var(--text-muted)] line-clamp-2 leading-relaxed font-mono">
                         {item.snippet || item.content}
                       </p>
                     </div>
@@ -497,13 +497,13 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             <div className="flex flex-col h-full">
               <div className="px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <FileCode2 className="w-4 h-4 text-emerald-400" />
-                  <h3 className="text-sm font-semibold text-white tracking-tight">Documents</h3>
+                  <FileCode2 className="w-4 h-4 text-[var(--accent-emerald)]" />
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">Documents</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => onSelectFlyout('none')}
-                  className="p-1 rounded-lg text-neutral-500 hover:text-white transition-colors"
+                  className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -511,19 +511,19 @@ export const NavigationRail: FC<NavigationRailProps> = ({
 
               <div className="px-3 pb-2">
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-neutral-500" />
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-[var(--text-dim)]" />
                   <input
                     type="text"
                     placeholder="Filter documents..."
                     value={documentQuery}
                     onChange={(e) => setDocumentQuery(e.target.value)}
-                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-[#141416] rounded-xl text-white placeholder-neutral-500 border-none outline-none"
+                    className="w-full pl-8 pr-7 py-1.5 text-xs bg-[var(--bg-card)] rounded-xl text-[var(--text-primary)] placeholder-neutral-500 border-none outline-none"
                   />
                   {documentQuery && (
                     <button
                       type="button"
                       onClick={() => setDocumentQuery('')}
-                      className="absolute right-2.5 top-2.5 text-neutral-500 hover:text-white"
+                      className="absolute right-2.5 top-2.5 text-[var(--text-dim)] hover:text-[var(--text-primary)]"
                     >
                       <X className="w-3 h-3" />
                     </button>
@@ -534,39 +534,40 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               {/* Minimal Documents List */}
               <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-1">
                 {filteredArtifacts.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-neutral-500">
+                  <div className="py-12 text-center text-xs text-[var(--text-dim)]">
                     {documentQuery.trim() ? 'No matching documents' : 'No documents generated yet'}
                   </div>
                 ) : (
                   filteredArtifacts.map((doc) => (
-                    <div
+                    <button
+                      type="button"
                       key={doc.id}
                       onClick={() => {
                         onOpenArtifact?.(doc);
                         onSelectFlyout('none');
                       }}
-                      className="px-3 py-2.5 rounded-xl hover:bg-[#141416] cursor-pointer transition-all group"
+                      className="w-full text-left px-4 py-4 mb-2 rounded-2xl bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)] cursor-pointer transition-all group"
                     >
                       <div className="flex items-baseline justify-between gap-2">
-                        <h4 className="text-[13px] font-medium text-neutral-200 group-hover:text-emerald-400 truncate flex-1 transition-colors">
+                        <h4 className="text-sm font-semibold text-[var(--text-primary)] line-clamp-2 flex-1 transition-colors">
                           {doc.title}
                         </h4>
-                        <span className="text-[10px] font-mono text-neutral-500 shrink-0">
+                        <span className="text-[10px] font-mono text-[var(--text-dim)] shrink-0">
                           v{doc.version}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between mt-0.5 text-[10px] text-neutral-500 font-mono">
-                        <span className="uppercase text-neutral-400">
-                          {doc.artifact_type}
+                      <div className="flex items-center justify-between mt-0.5 text-[10px] text-[var(--text-dim)] font-mono">
+                        <span className="uppercase text-[var(--text-muted)]">
+                          {doc.artifact_type.replaceAll('_', ' ')}
                         </span>
                         <span>{formatTimestamp(doc.updated_at || doc.created_at)}</span>
                       </div>
                       {doc.summary && (
-                        <p className="text-[11.5px] text-neutral-400 truncate mt-1">
+                        <p className="text-xs leading-relaxed text-[var(--text-muted)] line-clamp-2 mt-2">
                           {doc.summary}
                         </p>
                       )}
-                    </div>
+                    </button>
                   ))
                 )}
               </div>
@@ -578,13 +579,13 @@ export const NavigationRail: FC<NavigationRailProps> = ({
             <div className="flex flex-col h-full">
               <div className="px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Compass className="w-4 h-4 text-emerald-400" />
-                  <h3 className="text-sm font-semibold text-white tracking-tight">Shared Links</h3>
+                  <Compass className="w-4 h-4 text-[var(--accent-emerald)]" />
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">Shared Links</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => onSelectFlyout('none')}
-                  className="p-1 rounded-lg text-neutral-500 hover:text-white transition-colors"
+                  className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -593,7 +594,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               {/* Minimal Links List */}
               <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-1">
                 {links.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-neutral-500">
+                  <div className="py-12 text-center text-xs text-[var(--text-dim)]">
                     No links shared yet.
                   </div>
                 ) : (
@@ -603,18 +604,18 @@ export const NavigationRail: FC<NavigationRailProps> = ({
                       href={link.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="block px-3 py-2.5 rounded-xl hover:bg-[#141416] transition-all group"
+                      className="block px-3 py-2.5 rounded-xl hover:bg-[var(--bg-card)] transition-all group"
                     >
                       <div className="flex items-baseline justify-between gap-2">
-                        <h4 className="text-[13px] font-medium text-neutral-200 truncate group-hover:text-emerald-400 transition-colors">
+                        <h4 className="text-[13px] font-medium text-[var(--text-secondary)] truncate group-hover:text-[var(--accent-emerald)] transition-colors">
                           {link.title}
                         </h4>
-                        <ExternalLink className="w-3 h-3 text-neutral-500 shrink-0" />
+                        <ExternalLink className="w-3 h-3 text-[var(--text-dim)] shrink-0" />
                       </div>
-                      <p className="text-[11px] text-neutral-500 truncate mt-0.5 font-mono">
+                      <p className="text-[11px] text-[var(--text-dim)] truncate mt-0.5 font-mono">
                         {link.url}
                       </p>
-                      <div className="flex items-center justify-between text-[10px] text-neutral-600 mt-1">
+                      <div className="flex items-center justify-between text-[10px] text-[var(--text-dim)] mt-1">
                         <span className="truncate max-w-[180px]">{link.session_name}</span>
                         <span>{formatTimestamp(link.created_at)}</span>
                       </div>
@@ -631,12 +632,12 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               <div className="px-4 py-3.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <History className="w-4 h-4 text-purple-400" />
-                  <h3 className="text-sm font-semibold text-white tracking-tight">Chronology</h3>
+                  <h3 className="text-sm font-semibold text-[var(--text-primary)] tracking-tight">Chronology</h3>
                 </div>
                 <button
                   type="button"
                   onClick={() => onSelectFlyout('none')}
-                  className="p-1 rounded-lg text-neutral-500 hover:text-white transition-colors"
+                  className="p-1 rounded-lg text-[var(--text-dim)] hover:text-[var(--text-primary)] transition-colors"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -645,7 +646,7 @@ export const NavigationRail: FC<NavigationRailProps> = ({
               {/* Minimal Chronology List */}
               <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-1">
                 {chronology.length === 0 ? (
-                  <div className="py-12 text-center text-xs text-neutral-500">
+                  <div className="py-12 text-center text-xs text-[var(--text-dim)]">
                     No chronological events yet.
                   </div>
                 ) : (
@@ -670,25 +671,25 @@ export const NavigationRail: FC<NavigationRailProps> = ({
                           onOpenMemoryInspector();
                         }
                       }}
-                      className="px-3 py-2.5 rounded-xl hover:bg-[#141416] cursor-pointer transition-all group"
+                      className="px-3 py-2.5 rounded-xl hover:bg-[var(--bg-card)] cursor-pointer transition-all group"
                     >
                       <div className="flex items-baseline justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">
+                          <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--text-dim)]">
                             {ev.type.replace('_event', '')}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono text-neutral-500 shrink-0">
+                        <span className="text-[10px] font-mono text-[var(--text-dim)] shrink-0">
                           {formatTimestamp(ev.timestamp)}
                         </span>
                       </div>
 
-                      <h4 className="text-[12.5px] font-medium text-neutral-200 mt-0.5 truncate group-hover:text-white">
+                      <h4 className="text-[12.5px] font-medium text-[var(--text-secondary)] mt-0.5 truncate group-hover:text-[var(--text-primary)]">
                         {ev.title}
                       </h4>
 
                       {ev.description && (
-                        <p className="text-[11px] text-neutral-400 mt-0.5 truncate">
+                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
                           {ev.description}
                         </p>
                       )}

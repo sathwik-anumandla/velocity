@@ -192,7 +192,7 @@ export const MemoryInspectorModal: FC<MemoryInspectorModalProps> = ({
                     type="button"
                     onClick={handleSaveDoc}
                     disabled={isSaving}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-black hover:bg-zinc-200 transition-colors"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-[var(--text-primary)] text-[var(--bg-primary)] hover:opacity-85 transition-colors"
                   >
                     <Save className="w-3.5 h-3.5" />
                     <span>{isSaving ? 'Saving...' : 'Save'}</span>
@@ -313,7 +313,7 @@ export const MemoryInspectorModal: FC<MemoryInspectorModalProps> = ({
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-white/10 text-white">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[var(--bg-pill)] text-[var(--text-primary)]">
                             {entry.source}
                           </span>
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-zinc-800 text-zinc-300">

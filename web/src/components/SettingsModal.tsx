@@ -24,6 +24,10 @@ import {
   Sun,
   Moon,
   Monitor,
+  ChartColumn,
+  Cpu,
+  MessageSquare,
+  History,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -345,7 +349,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
       group: 'Settings',
       items: [
         { id: 'general', label: 'General', icon: Sliders },
-        { id: 'usage', label: 'Usage', icon: Clock },
+        { id: 'usage', label: 'Usage', icon: ChartColumn },
         { id: 'memory', label: 'Memory', icon: Brain },
       ],
     },
@@ -379,20 +383,20 @@ export const SettingsModal: FC<SettingsModalProps> = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-4xl h-[660px] max-h-[90vh] rounded-2xl bg-[#141416] text-neutral-100 shadow-2xl flex overflow-hidden select-none"
+        className="w-full max-w-4xl h-[660px] max-h-[90vh] rounded-2xl bg-[var(--bg-card)] text-[var(--text-primary)] shadow-2xl flex overflow-hidden select-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Left Navigation Pane (Matching settings-layout.png) */}
-        <aside className="w-64 bg-[#0d0d0f] p-4 flex flex-col shrink-0">
+        <aside className="w-16 sm:w-56 bg-[var(--bg-code)] p-2 sm:p-4 flex flex-col shrink-0">
           {/* Top Search Input */}
-          <div className="relative mb-3">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-neutral-500" />
+          <div className="relative mb-3 hidden sm:block">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-[var(--text-dim)]" />
             <input
               type="text"
               placeholder="Search..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              className="w-full pl-9 pr-3 py-1.5 bg-[#18181b] rounded-xl text-xs text-white placeholder-neutral-500 border-none outline-none"
+              className="w-full pl-9 pr-3 py-1.5 bg-[var(--bg-card)] rounded-xl text-xs text-[var(--text-primary)] placeholder-neutral-500 border-none outline-none"
             />
           </div>
 
@@ -400,7 +404,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
           <div className="flex-1 overflow-y-auto space-y-4 pt-1">
             {filteredCategories.map((cat) => (
               <div key={cat.group}>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500 px-3 mb-1">
+                <div className="hidden sm:block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-dim)] px-3 mb-1">
                   {cat.group}
                 </div>
                 <div className="space-y-0.5">
@@ -411,15 +415,17 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                       <button
                         key={item.id}
                         type="button"
+                        aria-label={item.label}
+                        aria-current={isActive ? 'page' : undefined}
                         onClick={() => setActiveTab(item.id as any)}
                         className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium transition-colors text-left ${
                           isActive
-                            ? 'bg-[#222227] text-white shadow-sm'
-                            : 'text-neutral-400 hover:text-white hover:bg-[#18181b]'
+                            ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm'
+                            : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
                         }`}
                       >
-                        <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-neutral-500'}`} />
-                        <span>{item.label}</span>
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-[var(--text-primary)]' : 'text-[var(--text-dim)]'}`} />
+                        <span className="hidden sm:inline">{item.label}</span>
                       </button>
                     );
                   })}
@@ -430,28 +436,29 @@ export const SettingsModal: FC<SettingsModalProps> = ({
         </aside>
 
         {/* Right Content Area */}
-        <main className="flex-1 bg-[#141416] p-6 overflow-y-auto flex flex-col">
+        <main className="flex-1 min-w-0 bg-[var(--bg-card)] p-4 sm:p-6 overflow-y-auto flex flex-col">
           {/* Header */}
           <div className="flex items-center justify-between pb-5 mb-5 shrink-0">
             <div>
-              <h2 className="text-lg font-semibold text-white capitalize">
+              <h2 className="text-lg font-semibold text-[var(--text-primary)] capitalize">
                 {activeTab === 'general'
-                  ? 'General Settings'
+                  ? 'General'
                   : activeTab === 'usage'
-                  ? 'Usage & Cost Estimates'
+                  ? 'Usage'
                   : activeTab === 'memory'
-                  ? 'Memory Vault & Cognitive Models'
+                  ? 'Memory'
                   : activeTab === 'plugins'
-                  ? 'Plugin Integrations'
+                  ? 'Plugins'
                   : activeTab === 'schedules'
-                  ? 'Proactive Routines & Schedules'
-                  : 'Installed Skills'}
+                  ? 'Schedules'
+                  : 'Skills'}
               </h2>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-xl text-neutral-400 hover:text-white hover:bg-[#1f1f23] transition-colors"
+              aria-label="Close settings"
+              className="p-1.5 rounded-xl text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -465,10 +472,10 @@ export const SettingsModal: FC<SettingsModalProps> = ({
               <div className="space-y-6 text-xs">
                 <DeploymentInfo />
                 {/* Theme Selector */}
-                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                <div className="p-4 rounded-2xl bg-[var(--bg-code)] space-y-3">
                   <div>
-                    <div className="font-semibold text-white text-sm">Appearance & Theme</div>
-                    <p className="text-neutral-400 mt-0.5">Select visual theme preference.</p>
+                    <div className="flex items-center gap-2 font-semibold text-[var(--text-primary)] text-sm"><Sun size={16} aria-hidden="true" />Appearance</div>
+                    <p className="text-[var(--text-muted)] mt-0.5">Select visual theme preference.</p>
                   </div>
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     {(['dark', 'light', 'oled'] as const).map((t) => (
@@ -478,14 +485,14 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         onClick={() => onSelectTheme?.(t)}
                         className={`p-3 rounded-xl flex items-center justify-center gap-2 transition-all font-medium capitalize ${
                           theme === t
-                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
-                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                            ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm ring-1 ring-[var(--bg-pill-hover)]'
+                            : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                         }`}
                       >
                         {t === 'light' ? (
-                          <Sun className="w-4 h-4 text-amber-400" />
+                          <Sun className="w-4 h-4 text-[var(--accent-amber)]" />
                         ) : t === 'oled' ? (
-                          <Monitor className="w-4 h-4 text-sky-400" />
+                          <Monitor className="w-4 h-4 text-[var(--accent-blue)]" />
                         ) : (
                           <Moon className="w-4 h-4 text-indigo-400" />
                         )}
@@ -496,10 +503,10 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                 </div>
 
                 {/* Primary Model */}
-                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                <div className="p-4 rounded-2xl bg-[var(--bg-code)] space-y-3">
                   <div>
-                    <div className="font-semibold text-white text-sm">Primary Inference Model</div>
-                    <p className="text-neutral-400 mt-0.5">High-speed vs. deep architecture reasoning model.</p>
+                    <div className="flex items-center gap-2 font-semibold text-[var(--text-primary)] text-sm"><Cpu size={16} aria-hidden="true" />Model</div>
+                    <p className="text-[var(--text-muted)] mt-0.5">High-speed vs. deep architecture reasoning model.</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 pt-1">
                     {[
@@ -512,22 +519,22 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         onClick={() => onSelectModel(m.id as SupportedModel)}
                         className={`p-3 rounded-xl text-left transition-all ${
                           currentModel === m.id
-                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
-                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                            ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm ring-1 ring-[var(--bg-pill-hover)]'
+                            : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                         }`}
                       >
-                        <div className="font-medium text-white text-xs">{m.name}</div>
-                        <div className="text-[11px] text-neutral-500 mt-0.5">{m.desc}</div>
+                        <div className="font-medium text-[var(--text-primary)] text-xs">{m.name}</div>
+                        <div className="text-[11px] text-[var(--text-dim)] mt-0.5">{m.desc}</div>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Thinking Effort */}
-                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                <div className="p-4 rounded-2xl bg-[var(--bg-code)] space-y-3">
                   <div>
-                    <div className="font-semibold text-white text-sm">Thinking Effort</div>
-                    <p className="text-neutral-400 mt-0.5">Depth of reasoning applied before generating response turns.</p>
+                    <div className="flex items-center gap-2 font-semibold text-[var(--text-primary)] text-sm"><Brain size={16} aria-hidden="true" />Reasoning</div>
+                    <p className="text-[var(--text-muted)] mt-0.5">Depth of reasoning applied before generating response turns.</p>
                   </div>
                   <div className="grid grid-cols-5 gap-1.5 pt-1">
                     {(['none', 'low', 'medium', 'high', 'max'] as const).map((effort) => (
@@ -537,8 +544,8 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         onClick={() => onSelectEffort(effort)}
                         className={`py-2 px-3 rounded-xl text-center capitalize transition-all font-medium ${
                           currentEffort === effort
-                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
-                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                            ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm ring-1 ring-[var(--bg-pill-hover)]'
+                            : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                         }`}
                       >
                         {effort}
@@ -548,10 +555,10 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                 </div>
 
                 {/* Response Verbosity */}
-                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                <div className="p-4 rounded-2xl bg-[var(--bg-code)] space-y-3">
                   <div>
-                    <div className="font-semibold text-white text-sm">Response Verbosity</div>
-                    <p className="text-neutral-400 mt-0.5">Control paragraph length and response density.</p>
+                    <div className="flex items-center gap-2 font-semibold text-[var(--text-primary)] text-sm"><MessageSquare size={16} aria-hidden="true" />Response length</div>
+                    <p className="text-[var(--text-muted)] mt-0.5">Control paragraph length and response density.</p>
                   </div>
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     {[
@@ -565,22 +572,22 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         onClick={() => onSelectVerbosity(v.id as Verbosity)}
                         className={`p-3 rounded-xl text-left transition-all ${
                           currentVerbosity === v.id
-                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
-                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                            ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm ring-1 ring-[var(--bg-pill-hover)]'
+                            : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                         }`}
                       >
-                        <div className="font-medium text-white">{v.name}</div>
-                        <div className="text-[11px] text-neutral-500 mt-0.5">{v.desc}</div>
+                        <div className="font-medium text-[var(--text-primary)]">{v.name}</div>
+                        <div className="text-[11px] text-[var(--text-dim)] mt-0.5">{v.desc}</div>
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Memory Recall Budget */}
-                <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                <div className="p-4 rounded-2xl bg-[var(--bg-code)] space-y-3">
                   <div>
-                    <div className="font-semibold text-white text-sm">Memory Recall Budget</div>
-                    <p className="text-neutral-400 mt-0.5">Depth of Hindsight memory search per conversational turn.</p>
+                    <div className="flex items-center gap-2 font-semibold text-[var(--text-primary)] text-sm"><History size={16} aria-hidden="true" />Memory recall</div>
+                    <p className="text-[var(--text-muted)] mt-0.5">Depth of Hindsight memory search per conversational turn.</p>
                   </div>
                   <div className="grid grid-cols-3 gap-2 pt-1">
                     {[
@@ -594,12 +601,12 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         onClick={() => onSelectRecallBudget(b.id as RecallBudget)}
                         className={`p-3 rounded-xl text-left transition-all ${
                           currentRecallBudget === b.id
-                            ? 'bg-[#222227] text-white shadow-sm ring-1 ring-white/10'
-                            : 'bg-[#18181b] text-neutral-400 hover:text-white'
+                            ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] shadow-sm ring-1 ring-[var(--bg-pill-hover)]'
+                            : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                         }`}
                       >
-                        <div className="font-medium text-white">{b.name}</div>
-                        <div className="text-[11px] text-neutral-500 mt-0.5">{b.desc}</div>
+                        <div className="font-medium text-[var(--text-primary)]">{b.name}</div>
+                        <div className="text-[11px] text-[var(--text-dim)] mt-0.5">{b.desc}</div>
                       </button>
                     ))}
                   </div>
@@ -611,8 +618,8 @@ export const SettingsModal: FC<SettingsModalProps> = ({
             {activeTab === 'memory' && (
               <div className="flex h-full gap-4 text-xs">
                 {/* Vault Tree Sidebar */}
-                <div className="w-56 bg-[#0d0d0f] rounded-2xl p-3 flex flex-col shrink-0">
-                  <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider px-2 mb-2">
+                <div className="w-56 bg-[var(--bg-code)] rounded-2xl p-3 flex flex-col shrink-0">
+                  <div className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider px-2 mb-2">
                     Vault Documents
                   </div>
                   <div className="flex-1 overflow-y-auto space-y-1">
@@ -623,11 +630,11 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         onClick={() => handleSelectVaultDoc(item.path)}
                         className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left transition-all truncate ${
                           selectedVaultPath === item.path
-                            ? 'bg-[#222227] text-white font-medium'
-                            : 'text-neutral-400 hover:text-white hover:bg-[#18181b]'
+                            ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)] font-medium'
+                            : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
                         }`}
                       >
-                        <FileText className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                        <FileText className="w-3.5 h-3.5 shrink-0 text-[var(--accent-blue)]" />
                         <span className="truncate">{item.name}</span>
                       </button>
                     ))}
@@ -635,9 +642,9 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                 </div>
 
                 {/* Vault Document Content Viewer / Editor */}
-                <div className="flex-1 bg-[#0d0d0f] rounded-2xl p-4 flex flex-col min-w-0">
+                <div className="flex-1 bg-[var(--bg-code)] rounded-2xl p-4 flex flex-col min-w-0">
                   <div className="flex items-center justify-between pb-3 mb-3 shrink-0">
-                    <span className="font-mono text-neutral-300 text-xs truncate">
+                    <span className="font-mono text-[var(--text-secondary)] text-xs truncate">
                       {selectedVaultPath}
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
@@ -646,7 +653,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                           <button
                             type="button"
                             onClick={() => setIsEditingVaultDoc(false)}
-                            className="px-2.5 py-1 text-neutral-400 hover:text-white rounded-lg"
+                            className="px-2.5 py-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg"
                           >
                             Cancel
                           </button>
@@ -654,7 +661,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                             type="button"
                             onClick={handleSaveVaultDoc}
                             disabled={isSavingVault}
-                            className="flex items-center gap-1 px-3 py-1 bg-white text-black font-medium rounded-lg hover:bg-neutral-200 transition-colors"
+                            className="flex items-center gap-1 px-3 py-1 bg-[var(--text-primary)] text-[var(--bg-primary)] font-medium rounded-lg hover:opacity-85 transition-colors"
                           >
                             <Save className="w-3.5 h-3.5" />
                             <span>Save</span>
@@ -667,7 +674,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                             setVaultDocEditDraft(vaultDocContent);
                             setIsEditingVaultDoc(true);
                           }}
-                          className="flex items-center gap-1 px-2.5 py-1 text-neutral-400 hover:text-white bg-[#18181b] rounded-lg transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] bg-[var(--bg-card)] rounded-lg transition-colors"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                           <span>Edit</span>
@@ -678,15 +685,15 @@ export const SettingsModal: FC<SettingsModalProps> = ({
 
                   <div className="flex-1 overflow-y-auto">
                     {isLoadingVault ? (
-                      <div className="flex items-center justify-center h-48 text-neutral-500">Loading document...</div>
+                      <div className="flex items-center justify-center h-48 text-[var(--text-dim)]">Loading document...</div>
                     ) : isEditingVaultDoc ? (
                       <textarea
                         value={vaultDocEditDraft}
                         onChange={(e) => setVaultDocEditDraft(e.target.value)}
-                        className="w-full h-full bg-[#141416] p-3 rounded-xl font-mono text-xs text-white border-none outline-none resize-none leading-relaxed"
+                        className="w-full h-full bg-[var(--bg-card)] p-3 rounded-xl font-mono text-xs text-[var(--text-primary)] border-none outline-none resize-none leading-relaxed"
                       />
                     ) : (
-                      <div className="prose prose-invert max-w-none text-xs leading-relaxed text-neutral-300 font-sans">
+                      <div className="prose prose-invert max-w-none text-xs leading-relaxed text-[var(--text-secondary)] font-sans">
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {vaultDocContent || '_Empty document_'}
                         </ReactMarkdown>
@@ -701,32 +708,32 @@ export const SettingsModal: FC<SettingsModalProps> = ({
             {activeTab === 'plugins' && (
               <div className="space-y-4 text-xs">
                 {authError && (
-                  <div className="p-3.5 rounded-2xl bg-red-950/30 text-red-200 flex items-start gap-2.5">
-                    <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                  <div className="p-3.5 rounded-2xl bg-red-500/10 text-[var(--accent-red)] flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-[var(--accent-red)] shrink-0 mt-0.5" />
                     <div>{authError}</div>
                   </div>
                 )}
 
-                <div className="p-5 rounded-2xl bg-[#0d0d0f] space-y-4">
+                <div className="p-5 rounded-2xl bg-[var(--bg-code)] space-y-4">
                   <div className="flex items-start justify-between">
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white text-sm">Google Workspace</span>
+                        <span className="font-semibold text-[var(--text-primary)] text-sm">Google Workspace</span>
                         {integrationStatus?.google_connected ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-emerald-400">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/15 text-[var(--accent-emerald)]">
                             <Check className="w-3 h-3" /> Connected
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#18181b] text-neutral-400">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-[var(--bg-card)] text-[var(--text-muted)]">
                             Not Connected
                           </span>
                         )}
                       </div>
-                      <p className="text-neutral-400">
+                      <p className="text-[var(--text-muted)]">
                         Connect Google Calendar, Tasks, and Gmail for proactive briefings and email drafting.
                       </p>
                       {integrationStatus?.google_user_email && (
-                        <p className="text-neutral-300 font-mono pt-1">
+                        <p className="text-[var(--text-secondary)] font-mono pt-1">
                           Account: {integrationStatus.google_user_email}
                         </p>
                       )}
@@ -737,7 +744,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         type="button"
                         onClick={handleDisconnectGoogle}
                         disabled={isDisconnecting}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1f1f23] hover:bg-red-950/40 text-neutral-300 hover:text-red-400 transition-colors"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-card-hover)] hover:bg-red-500/10 text-[var(--text-secondary)] hover:text-[var(--accent-red)] transition-colors"
                       >
                         <Unplug className="w-3.5 h-3.5" />
                         <span>Disconnect</span>
@@ -747,7 +754,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         type="button"
                         onClick={handleConnectGoogle}
                         disabled={isConnecting}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-black font-semibold hover:bg-neutral-200 transition-colors"
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--text-primary)] text-[var(--bg-primary)] font-semibold hover:opacity-85 transition-colors"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                         <span>Connect Account</span>
@@ -762,11 +769,11 @@ export const SettingsModal: FC<SettingsModalProps> = ({
             {activeTab === 'schedules' && (
               <div className="space-y-4 text-xs">
                 <div className="flex items-center justify-between pb-2">
-                  <span className="text-neutral-400">Proactive autonomous routines executed on schedule</span>
+                  <span className="text-[var(--text-muted)]">Proactive autonomous routines executed on schedule</span>
                   <button
                     type="button"
                     onClick={() => setIsCreatingSchedule(!isCreatingSchedule)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white text-black font-medium hover:bg-neutral-200 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--text-primary)] text-[var(--bg-primary)] font-medium hover:opacity-85 transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>New Routine</span>
@@ -775,15 +782,15 @@ export const SettingsModal: FC<SettingsModalProps> = ({
 
                 {/* Create Routine Form (Friendly Time Selector - NO Cron Expression!) */}
                 {isCreatingSchedule && (
-                  <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                  <div className="p-4 rounded-2xl bg-[var(--bg-code)] space-y-3">
                     <div className="flex items-center justify-between">
-                      <h4 className="font-semibold text-white text-xs">Schedule New Routine</h4>
-                      <div className="flex items-center gap-1 bg-[#18181b] p-0.5 rounded-xl">
+                      <h4 className="font-semibold text-[var(--text-primary)] text-xs">Schedule New Routine</h4>
+                      <div className="flex items-center gap-1 bg-[var(--bg-card)] p-0.5 rounded-xl">
                         <button
                           type="button"
                           onClick={() => setNewScheduleType('recurring')}
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                            newScheduleType === 'recurring' ? 'bg-[#222227] text-white' : 'text-neutral-400'
+                            newScheduleType === 'recurring' ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                           }`}
                         >
                           Recurring
@@ -792,7 +799,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                           type="button"
                           onClick={() => setNewScheduleType('one_shot')}
                           className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                            newScheduleType === 'one_shot' ? 'bg-[#222227] text-white' : 'text-neutral-400'
+                            newScheduleType === 'one_shot' ? 'bg-[var(--bg-card-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)]'
                           }`}
                         >
                           One-Time
@@ -801,7 +808,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                     </div>
 
                     {scheduleError && (
-                      <p className="text-red-400 text-[11px]">{scheduleError}</p>
+                      <p className="text-[var(--accent-red)] text-[11px]">{scheduleError}</p>
                     )}
                     <div className="space-y-2">
                       <input
@@ -809,17 +816,17 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         placeholder="Routine Name (e.g. Morning Briefing, Deep Work Check-in)..."
                         value={newScheduleName}
                         onChange={(e) => setNewScheduleName(e.target.value)}
-                        className="w-full px-3 py-2 bg-[#18181b] rounded-xl text-white placeholder-neutral-500 border-none outline-none text-xs"
+                        className="w-full px-3 py-2 bg-[var(--bg-card)] rounded-xl text-[var(--text-primary)] placeholder-neutral-500 border-none outline-none text-xs"
                       />
 
                       {newScheduleType === 'recurring' ? (
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="text-neutral-400 text-[11px] block mb-1">Frequency</label>
+                            <label className="text-[var(--text-muted)] text-[11px] block mb-1">Frequency</label>
                             <select
                               value={newScheduleFrequency}
                               onChange={(e) => setNewScheduleFrequency(e.target.value as any)}
-                              className="w-full px-3 py-2 bg-[#18181b] rounded-xl text-white border-none outline-none text-xs"
+                              className="w-full px-3 py-2 bg-[var(--bg-card)] rounded-xl text-[var(--text-primary)] border-none outline-none text-xs"
                             >
                               <option value="daily">Daily</option>
                               <option value="weekdays">Weekdays (Mon-Fri)</option>
@@ -827,35 +834,35 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                             </select>
                           </div>
                           <div>
-                            <label className="text-neutral-400 text-[11px] block mb-1">Execution Time</label>
+                            <label className="text-[var(--text-muted)] text-[11px] block mb-1">Execution Time</label>
                             <input
                               type="time"
                               value={newScheduleTime}
                               onChange={(e) => setNewScheduleTime(e.target.value)}
-                              className="w-full px-3 py-2 bg-[#18181b] rounded-xl text-white border-none outline-none text-xs"
+                              className="w-full px-3 py-2 bg-[var(--bg-card)] rounded-xl text-[var(--text-primary)] border-none outline-none text-xs"
                             />
                           </div>
                         </div>
                       ) : (
                         <div>
-                          <label className="text-neutral-400 text-[11px] block mb-1">Date and Time</label>
+                          <label className="text-[var(--text-muted)] text-[11px] block mb-1">Date and Time</label>
                           <input
                             type="datetime-local"
                             value={newScheduleDateTime}
                             onChange={(e) => setNewScheduleDateTime(e.target.value)}
-                            className="w-full px-3 py-2 bg-[#18181b] rounded-xl text-white border-none outline-none text-xs"
+                            className="w-full px-3 py-2 bg-[var(--bg-card)] rounded-xl text-[var(--text-primary)] border-none outline-none text-xs"
                           />
                         </div>
                       )}
 
                       <div>
-                        <label className="text-neutral-400 text-[11px] block mb-1">Autonomous Instructions / Prompt</label>
+                        <label className="text-[var(--text-muted)] text-[11px] block mb-1">Autonomous Instructions / Prompt</label>
                         <textarea
                           placeholder="What should Velocity do at this time? (e.g. Synthesize today's calendar and priority tasks)..."
                           value={newSchedulePrompt}
                           onChange={(e) => setNewSchedulePrompt(e.target.value)}
                           rows={3}
-                          className="w-full p-2.5 bg-[#18181b] rounded-xl text-white placeholder-neutral-500 border-none outline-none text-xs resize-none"
+                          className="w-full p-2.5 bg-[var(--bg-card)] rounded-xl text-[var(--text-primary)] placeholder-neutral-500 border-none outline-none text-xs resize-none"
                         />
                       </div>
                     </div>
@@ -864,7 +871,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                       <button
                         type="button"
                         onClick={() => setIsCreatingSchedule(false)}
-                        className="px-3 py-1.5 text-neutral-400 hover:text-white"
+                        className="px-3 py-1.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                       >
                         Cancel
                       </button>
@@ -872,7 +879,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                         type="button"
                         onClick={handleCreateSchedule}
                         disabled={isSubmittingSchedule}
-                        className="px-4 py-1.5 bg-white text-black font-medium rounded-xl hover:bg-neutral-200 transition-colors"
+                        className="px-4 py-1.5 bg-[var(--text-primary)] text-[var(--bg-primary)] font-medium rounded-xl hover:opacity-85 transition-colors"
                       >
                         {isSubmittingSchedule ? 'Saving...' : 'Save Routine'}
                       </button>
@@ -885,20 +892,20 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                   {schedules.map((s) => (
                     <div
                       key={s.id}
-                      className="p-4 rounded-2xl bg-[#0d0d0f] flex items-center justify-between gap-4"
+                      className="p-4 rounded-2xl bg-[var(--bg-code)] flex items-center justify-between gap-4"
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-white text-xs">{s.name}</span>
+                          <span className="font-semibold text-[var(--text-primary)] text-xs">{s.name}</span>
                           <span
                             className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                              s.status === 'active' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-neutral-800 text-neutral-500'
+                              s.status === 'active' ? 'bg-emerald-500/15 text-[var(--accent-emerald)]' : 'bg-[var(--bg-pill)] text-[var(--text-dim)]'
                             }`}
                           >
                             {s.status === 'active' ? 'Active' : 'Paused'}
                           </span>
                         </div>
-                        <p className="text-neutral-400 text-[11px] truncate mt-0.5">
+                        <p className="text-[var(--text-muted)] text-[11px] truncate mt-0.5">
                           {s.prompt || 'Autonomous proactive routine'}
                         </p>
                       </div>
@@ -908,7 +915,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                           type="button"
                           onClick={() => handleToggleSchedule(s)}
                           title={s.status === 'active' ? 'Pause routine' : 'Resume routine'}
-                          className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-[#18181b]"
+                          className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
                         >
                           {s.status === 'active' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
                         </button>
@@ -916,7 +923,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                           type="button"
                           onClick={() => handleDeleteSchedule(s.id)}
                           title="Delete routine"
-                          className="p-1.5 rounded-lg text-neutral-400 hover:text-red-400 hover:bg-[#18181b]"
+                          className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--accent-red)] hover:bg-[var(--bg-card)]"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -931,13 +938,13 @@ export const SettingsModal: FC<SettingsModalProps> = ({
             {activeTab === 'skills' && (
               <div className="space-y-4 text-xs">
                 {editingSkill ? (
-                  <div className="p-4 rounded-2xl bg-[#0d0d0f] space-y-3">
+                  <div className="p-4 rounded-2xl bg-[var(--bg-code)] space-y-3">
                     <div className="flex items-center justify-between pb-2">
-                      <span className="font-semibold text-white">Edit Skill: {editingSkill.name}</span>
+                      <span className="font-semibold text-[var(--text-primary)]">Edit Skill: {editingSkill.name}</span>
                       <button
                         type="button"
                         onClick={() => setEditingSkill(null)}
-                        className="text-neutral-400 hover:text-white"
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                       >
                         Cancel
                       </button>
@@ -946,14 +953,14 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                       value={skillInstructionsDraft}
                       onChange={(e) => setSkillInstructionsDraft(e.target.value)}
                       rows={10}
-                      className="w-full p-3 bg-[#18181b] rounded-xl font-mono text-xs text-white border-none outline-none resize-none leading-relaxed"
+                      className="w-full p-3 bg-[var(--bg-card)] rounded-xl font-mono text-xs text-[var(--text-primary)] border-none outline-none resize-none leading-relaxed"
                     />
                     <div className="flex justify-end pt-1">
                       <button
                         type="button"
                         onClick={handleSaveSkillInstructions}
                         disabled={isSavingSkill}
-                        className="px-4 py-1.5 bg-white text-black font-semibold rounded-xl hover:bg-neutral-200 transition-colors"
+                        className="px-4 py-1.5 bg-[var(--text-primary)] text-[var(--bg-primary)] font-semibold rounded-xl hover:opacity-85 transition-colors"
                       >
                         {isSavingSkill ? 'Saving...' : 'Save Instructions'}
                       </button>
@@ -964,18 +971,18 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                     {skills.map((sk) => (
                       <div
                         key={sk.id}
-                        className="p-4 rounded-2xl bg-[#0d0d0f] flex items-center justify-between gap-4"
+                        className="p-4 rounded-2xl bg-[var(--bg-code)] flex items-center justify-between gap-4"
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="font-semibold text-white text-xs">{sk.name}</span>
+                            <span className="font-semibold text-[var(--text-primary)] text-xs">{sk.name}</span>
                             {sk.slash_command && (
-                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#18181b] text-neutral-400">
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--bg-card)] text-[var(--text-muted)]">
                                 {sk.slash_command}
                               </span>
                             )}
                           </div>
-                          <p className="text-neutral-400 text-[11px] truncate mt-0.5">
+                          <p className="text-[var(--text-muted)] text-[11px] truncate mt-0.5">
                             {sk.description || 'Specialized modular reasoning skill'}
                           </p>
                         </div>
@@ -983,7 +990,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleOpenEditSkill(sk)}
-                            className="p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-[#18181b]"
+                            className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
                             title="Edit Instructions"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
@@ -992,7 +999,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                             type="button"
                             onClick={() => handleToggleSkill(sk)}
                             className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-colors ${
-                              sk.enabled ? 'bg-emerald-500/15 text-emerald-400' : 'bg-neutral-800 text-neutral-500'
+                              sk.enabled ? 'bg-emerald-500/15 text-[var(--accent-emerald)]' : 'bg-[var(--bg-pill)] text-[var(--text-dim)]'
                             }`}
                           >
                             {sk.enabled ? 'Enabled' : 'Disabled'}
